@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
   Animated,
   Share,
   Platform,
@@ -85,93 +84,96 @@ export const AdoptionModal: React.FC<AdoptionModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.backdrop}>
-        <Confetti visible={visible} />
+    <View style={styles.modalOverlay}>
+      <Confetti visible={visible} />
 
-        <Animated.View
-          style={[
-            styles.certificateCard,
-            { transform: [{ scale: scaleAnim }] },
-          ]}
-        >
-          {/* Ornate Gold Border & Header */}
-          <View style={styles.ornateHeader}>
-            <Text style={styles.headerRibbon}>📜 OFFICIAL ADOPTION CERTIFICATE 📜</Text>
-          </View>
+      <Animated.View
+        style={[
+          styles.certificateCard,
+          { transform: [{ scale: scaleAnim }] },
+        ]}
+      >
+        {/* Ornate Gold Border & Header */}
+        <View style={styles.ornateHeader}>
+          <Text style={styles.headerRibbon}>📜 OFFICIAL ADOPTION CERTIFICATE 📜</Text>
+        </View>
 
-          {/* Large Puppy Avatar with Pulsing Halo */}
-          <View style={styles.iconWrapper}>
-            <View style={[styles.haloRing, { backgroundColor: milestone.color + '22' }]} />
-            <Animated.Text
-              style={[
-                styles.puppyEmoji,
-                { transform: [{ scale: badgeBounce }] },
-              ]}
-            >
-              {milestone.icon}
-            </Animated.Text>
-          </View>
+        {/* Large Puppy Avatar with Pulsing Halo */}
+        <View style={styles.iconWrapper}>
+          <View style={[styles.haloRing, { backgroundColor: milestone.color + '22' }]} />
+          <Animated.Text
+            style={[
+              styles.puppyEmoji,
+              { transform: [{ scale: badgeBounce }] },
+            ]}
+          >
+            {milestone.icon}
+          </Animated.Text>
+        </View>
 
-          {/* Adoption Title & Badge */}
-          <Text style={styles.breedName}>{milestone.breedName}</Text>
-          <View style={[styles.badgeContainer, { backgroundColor: milestone.color + '1A', borderColor: milestone.color }]}>
-            <Text style={[styles.badgeTitle, { color: milestone.color }]}>
-              {milestone.badgeTitle}
-            </Text>
-          </View>
-
-          {/* Story Quote */}
-          <View style={styles.quoteCard}>
-            <Text style={styles.quoteText}>"{milestone.quote}"</Text>
-          </View>
-
-          {/* Chapter Milestone Tag */}
-          <Text style={styles.chapterBadge}>
-            Awarded for completing Chapter {milestone.chapter} (Level {milestone.level})
+        {/* Adoption Title & Badge */}
+        <Text style={styles.breedName}>{milestone.breedName}</Text>
+        <View style={[styles.badgeContainer, { backgroundColor: milestone.color + '1A', borderColor: milestone.color }]}>
+          <Text style={[styles.badgeTitle, { color: milestone.color }]}>
+            {milestone.badgeTitle}
           </Text>
+        </View>
 
-          {/* Share Toast */}
-          {copiedToast && (
-            <View style={styles.toast}>
-              <Text style={styles.toastText}>📋 Certificate Copied to Clipboard! 🐾</Text>
-            </View>
-          )}
+        {/* Story Quote */}
+        <View style={styles.quoteCard}>
+          <Text style={styles.quoteText}>"{milestone.quote}"</Text>
+        </View>
 
-          {/* Action Buttons */}
-          <View style={styles.buttonGroup}>
-            <TouchableOpacity
-              style={[styles.shareButton, { backgroundColor: milestone.color }]}
+        {/* Chapter Milestone Tag */}
+        <Text style={styles.chapterBadge}>
+          Awarded for completing Chapter {milestone.chapter} (Level {milestone.level})
+        </Text>
+
+        {/* Share Toast */}
+        {copiedToast && (
+          <View style={styles.toast}>
+            <Text style={styles.toastText}>📋 Certificate Copied to Clipboard! 🐾</Text>
+          </View>
+        )}
+
+        {/* Action Buttons */}
+        <View style={styles.buttonGroup}>
+          <TouchableOpacity
+              style={[styles.shareButton, { backgroundColor: milestone.color, shadowColor: milestone.color }]}
               onPress={handleShare}
               activeOpacity={0.8}
             >
-              <Text style={styles.shareButtonText}>Share Certificate 📤</Text>
-            </TouchableOpacity>
+            <Text style={styles.shareButtonText}>Share Certificate 📤</Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.continueButton}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                soundManager.play('button');
-                onClose();
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.continueButtonText}>Continue Journey 🌿</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </View>
-    </Modal>
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              soundManager.play('button');
+              onClose();
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.continueButtonText}>Continue Journey 🌿</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(28, 26, 24, 0.72)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 1000,
     padding: 20,
   },
   certificateCard: {
@@ -279,29 +281,36 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   shareButton: {
-    paddingVertical: 13,
-    borderRadius: 14,
+    paddingVertical: 14,
+    borderRadius: 18,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   shareButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
+    letterSpacing: -0.1,
   },
   continueButton: {
-    backgroundColor: '#EDE7DC',
-    paddingVertical: 12,
-    borderRadius: 14,
+    backgroundColor: '#FFFBF2',
+    paddingVertical: 13,
+    borderRadius: 16,
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#F5DCB7',
+    shadowColor: '#E67E22',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   continueButtonText: {
-    color: '#4A4339',
-    fontSize: 14,
+    color: '#6E4822',
+    fontSize: 15,
     fontWeight: '700',
   },
 });

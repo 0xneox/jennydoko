@@ -9,7 +9,6 @@ interface BoardProps {
   onCellPress: (row: number, col: number) => void;
   onMarkCell?: (row: number, col: number) => void;
   cellSize: number;
-  highlightedHint?: { row: number; col: number } | null;
   wrongCell?: { row: number; col: number } | null;
   isCompleting?: boolean;
   onDragStart?: () => void;
@@ -21,7 +20,6 @@ export const Board: React.FC<BoardProps> = ({
   onCellPress,
   onMarkCell,
   cellSize,
-  highlightedHint,
   wrongCell,
   isCompleting,
   onDragStart,
@@ -130,10 +128,6 @@ export const Board: React.FC<BoardProps> = ({
                     borders={borders}
                     row={rowIndex}
                     col={colIndex}
-                    isHighlighted={
-                      highlightedHint?.row === rowIndex &&
-                      highlightedHint?.col === colIndex
-                    }
                     isWrong={
                       wrongCell?.row === rowIndex &&
                       wrongCell?.col === colIndex

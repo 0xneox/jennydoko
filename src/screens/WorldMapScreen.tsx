@@ -25,13 +25,19 @@ export const WorldMapScreen: React.FC = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    getTotalStats().then(s => setStats(s)).catch(() => {});
+    let cancelled = false;
+    getTotalStats().then(s => { if (!cancelled) setStats(s); }).catch(() => {});
 
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 350,
       useNativeDriver: true,
     }).start();
+
+    return () => {
+      cancelled = true;
+      fadeAnim.stopAnimation();
+    };
   }, []);
 
   const activeChapter = CHAPTERS[selectedChapterIndex];
@@ -286,7 +292,7 @@ export const WorldMapScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F6F1',
+    backgroundColor: '#FBF9F5',
   },
   headerBar: {
     flexDirection: 'row',

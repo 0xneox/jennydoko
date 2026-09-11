@@ -2,7 +2,6 @@ import { Board, Cell, CellValue, Region, GameState, PuzzleData, Hint, Deduction 
 import { PuzzleSolver } from './solver';
 
 export class GameEngine {
-  // Helper to check if a coordinate is within board bounds
   private static isInsideBoard(row: number, col: number, size: number): boolean {
     return row >= 0 && row < size && col >= 0 && col < size;
   }
@@ -57,8 +56,16 @@ export class GameEngine {
     };
   }
 
+  private static cloneHistory(history: Board[]): Board[] {
+    return history.map(b => GameEngine.cloneBoard(b));
+  }
+
   public getState(): GameState {
-    return { ...this.state, board: GameEngine.cloneBoard(this.state.board) };
+    return {
+      ...this.state,
+      board: GameEngine.cloneBoard(this.state.board),
+      history: GameEngine.cloneHistory(this.state.history),
+    };
   }
 
   public placePuppy(row: number, col: number): boolean {
@@ -67,17 +74,16 @@ export class GameEngine {
     }
 
     const board = this.state.board;
-    // Correct boundary check: indices must be within [0, gridSize)
     if (!GameEngine.isInsideBoard(row, col, board.gridSize)) {
       return false;
     }
 
-    // If cell already has a puppy, tap toggles it off (removes it)
     if (board.cells[row][col].value === 'puppy') {
       board.cells[row][col].value = 'empty';
       this.state.moves++;
       this.state.history.push(GameEngine.cloneBoard(board));
       this.solver = new PuzzleSolver(board);
+      this.state.isComplete = false;
       return true;
     }
 
@@ -89,7 +95,7 @@ export class GameEngine {
     board.cells[row][col].value = 'puppy';
     this.state.moves++;
     this.state.history.push(GameEngine.cloneBoard(board));
-    this.solver = new PuzzleSolver(board); // Update solver with new board state
+    this.solver = new PuzzleSolver(board);
 
     if (this.checkWinCondition()) {
       this.state.isComplete = true;
@@ -120,18 +126,7 @@ export class GameEngine {
 
     this.state.moves++;
     this.state.history.push(GameEngine.cloneBoard(board));
-
-    return true;
-  }
-
-  public undo(): boolean {
-    if (this.state.history.length <= 1) {
-      return false;
-    }
-
-    this.state.history.pop();
-    this.state.board = GameEngine.cloneBoard(this.state.history[this.state.history.length - 1]);
-    this.state.moves--;
+    this.solver = new PuzzleSolver(board);
 
     return true;
   }
@@ -143,7 +138,7 @@ export class GameEngine {
     this.state.moves = 0;
     this.state.history = [initialBoard];
     this.state.isComplete = false;
-    this.solver = new PuzzleSolver(initialBoard); // Reset solver
+    this.solver = new PuzzleSolver(initialBoard);
   }
 
   private isValidPlacement(board: Board, row: number, col: number): boolean {
@@ -269,6 +264,32 @@ export class GameEngine {
       }
     }
 
+    // C1: Pairwise 8-directional adjacency check.
+    // Collect all puppy coordinates, then verify NO two touch (even diagonally).
+    const puppies: Array<[number, number]> = [];
+    for (let r = 0; r < board.gridSize; r++) {
+      for (let c = 0; c < board.gridSize; c++) {
+        if (board.cells[r][c].value === 'puppy') {
+          puppies.push([r, c]);
+        }
+      }
+    }
+    const adjacencyDirections = [
+      [-1, -1], [-1, 0], [-1, 1],
+      [0, -1],           [0, 1],
+      [1, -1],  [1, 0],  [1, 1],
+    ];
+    for (const [pr, pc] of puppies) {
+      for (const [dr, dc] of adjacencyDirections) {
+        const nr = pr + dr;
+        const nc = pc + dc;
+        if (!GameEngine.isInsideBoard(nr, nc, board.gridSize)) continue;
+        if (board.cells[nr][nc].value === 'puppy' && !(nr === pr && nc === pc)) {
+          return false;
+        }
+      }
+    }
+
     return true;
   }
 
@@ -371,7 +392,6 @@ export class GameEngine {
     const board = this.state.board;
     const size = board.gridSize;
 
-    // Precompute region matrix for O(1) lookup
     const regionMap = new Int32Array(size * size);
     for (const region of board.regions) {
       for (const cell of region.cells) {
@@ -393,22 +413,17 @@ export class GameEngine {
 
       const prevCol = row > 0 ? currentCols[row - 1] : -99;
       for (let col = 0; col < size; col++) {
-        // 1. Column uniqueness
         if (usedCols[col]) continue;
-        // 2. 8-direction adjacency (only row-1 can touch)
         if (Math.abs(col - prevCol) <= 1) continue;
-        // 3. Region uniqueness
         const regId = regionMap[row * size + col];
         if (usedRegions.has(regId)) continue;
 
-        // Place
         usedCols[col] = 1;
         usedRegions.add(regId);
         currentCols[row] = col;
 
         solveRow(row + 1);
 
-        // Backtrack
         usedCols[col] = 0;
         usedRegions.delete(regId);
         if (solutionCount >= 2) return;
@@ -425,7 +440,6 @@ export class GameEngine {
     const board = this.state.board;
     const hints: { row: number; col: number; reason: string }[] = [];
 
-    // Find cells that can be marked as X based on row constraints
     for (let row = 0; row < board.gridSize; row++) {
       const regionCounts = new Map<number, number>();
 
@@ -439,12 +453,10 @@ export class GameEngine {
         }
       }
 
-      // If a region appears only in one row, mark other cells in that row as X
       for (const [regionId, count] of regionCounts) {
         if (count === 1) {
           const region = board.regions.find(r => r.id === regionId);
           if (region) {
-            // Mark cells in this row that belong to other regions
             for (let col = 0; col < board.gridSize; col++) {
               const cellRegion = board.regions.find(r =>
                 r.cells.some(cell => cell.row === row && cell.col === col)
@@ -472,9 +484,6 @@ export class GameEngine {
     this.state.hearts = Math.min(3, this.state.hearts + count);
   }
 
-  /**
-   * Get a progressive 4-level hint with natural casual-friendly wording
-   */
   public getHint(level: 1 | 2 | 3 | 4 = 1): Hint | null {
     const deductions = this.solver.findAllDeductions();
 
@@ -482,7 +491,6 @@ export class GameEngine {
       return null;
     }
 
-    // Prioritize constructive puppy placements over pure X-eliminations
     const placementDeductions = deductions.filter(d =>
       d.technique === 'single_cell_colour' ||
       d.technique === 'colour_unique_row' ||
@@ -625,30 +633,18 @@ export class GameEngine {
     };
   }
 
-  /**
-   * Get all available deductions for the current board state
-   */
   public getAllDeductions(): Deduction[] {
     return this.solver.findAllDeductions();
   }
 
-  /**
-   * Check if the puzzle has a logical starting move
-   */
   public hasLogicalStartingMove(): boolean {
     return this.solver.hasLogicalStartingMove();
   }
 
-  /**
-   * Get the difficulty score for the current board state
-   */
   public getDifficultyScore(): number {
     return this.solver.calculateDifficultyScore();
   }
 
-  /**
-   * Get the required techniques for solving this puzzle
-   */
   public getRequiredTechniques() {
     return this.solver.getRequiredTechniques();
   }

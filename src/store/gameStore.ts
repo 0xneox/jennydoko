@@ -37,29 +37,48 @@ interface GameStore extends Omit<GameState, 'currentLevel'> {
 }
 
 export const useGameStore = create<GameStore>((set, get) => {
+  const progressLoadedRef = { current: false };
+
   // Load progress from storage on initialization
+  // IMPORTANT: this promise resolves asynchronously — we must NEVER overwrite user-initiated
+  // navigation or level selection (causes flash if it resolves mid/first paint after)
   loadProgress().then(progress => {
     if (progress) {
-      set({
-        unlockedLevels: progress.unlockedLevels,
-        currentLevel: progress.currentLevel,
+      set(state => {
+        // If user has already navigated or started a level, do not clobber their current state
+        if (progressLoadedRef.current && state.activeScreen !== 'home') return {};
+        progressLoadedRef.current = true;
+        return {
+          unlockedLevels: Math.max(state.unlockedLevels, progress.unlockedLevels),
+          currentLevel: state.currentLevel <= 1 ? progress.currentLevel : state.currentLevel,
+        };
       });
+    } else {
+        progressLoadedRef.current = true;
     }
   }).catch(error => {
+    progressLoadedRef.current = true;
     console.error('Failed to load progress:', error);
   });
 
   return {
     activeScreen: 'home' as ScreenName,
-    setActiveScreen: (screen: ScreenName) => set({ activeScreen: screen }),
+    setActiveScreen: (screen: ScreenName) => {
+      progressLoadedRef.current = true;
+      set({ activeScreen: screen });
+    },
     isDailyChallenge: false,
     startLevel: (level: number) => {
+      progressLoadedRef.current = true;
       const clampedLevel = Math.max(1, Math.min(1000, level));
-      set({ isDailyChallenge: false });
-      get().initializeLevel(clampedLevel);
-      set({ activeScreen: 'game' });
+      set({
+        isDailyChallenge: false,
+        currentLevel: clampedLevel,
+        activeScreen: 'game',
+      });
     },
     startDailyChallenge: () => {
+      progressLoadedRef.current = true;
       const puzzleData = getDailyPuzzle();
       const engine = new GameEngine(puzzleData);
       const state = engine.getState();
@@ -86,7 +105,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     history: [],
     isComplete: false,
     currentLevel: 1,
-    unlockedLevels: 1000, // All 1000 levels unlocked for seamless adventure exploration
+    unlockedLevels: 1,
     engine: null as GameEngine | null,
     highlightedHint: null,
     hintsUsed: 0,
@@ -119,13 +138,10 @@ export const useGameStore = create<GameStore>((set, get) => {
 
     placePuppy: (row: number, col: number) => {
       const { engine, mistakes, gameMode } = get();
-      console.log('[placePuppy] called with row:', row, 'col:', col, 'engine exists:', !!engine);
       if (!engine) return false;
 
       const success = engine.placePuppy(row, col);
-      console.log('[placePuppy] engine.placePuppy returned:', success);
       const state = engine.getState();
-      console.log('[placePuppy] state after placement - board cell value:', state.board.cells[row]?.[col]?.value);
       const newMistakes = success ? mistakes : mistakes + 1;
 
       // In Zen Mode, player has unlimited chances (hearts stay at 3, no sudden death)
@@ -142,7 +158,6 @@ export const useGameStore = create<GameStore>((set, get) => {
         lastWrongCell: success ? null : { row, col },
         isGameOver,
       });
-      console.log('[placePuppy] store updated with new board state');
 
       if (state.isComplete) {
         get().unlockNextLevel();
@@ -168,13 +183,10 @@ export const useGameStore = create<GameStore>((set, get) => {
 
     undo: () => {
       const { engine } = get();
-      console.log('[undo] called, engine exists:', !!engine);
       if (!engine) return false;
 
       const success = engine.undo();
-      console.log('[undo] engine.undo returned:', success);
       const state = engine.getState();
-      console.log('[undo] state after undo - board cell values changed');
       set({
         board: state.board,
         moves: state.moves,

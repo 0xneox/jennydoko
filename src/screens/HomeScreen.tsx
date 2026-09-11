@@ -29,6 +29,7 @@ export const HomeScreen: React.FC = () => {
   const { currentLevel, unlockedLevels, startLevel, startDailyChallenge, setActiveScreen } = useGameStore();
   const [showSettings, setShowSettings] = useState(false);
   const [showStory, setShowStory] = useState(false);
+  const [storyChecked, setStoryChecked] = useState(false);
   const [stats, setStats] = useState<GameStats | null>(null);
   const [dailyState, setDailyState] = useState<DailyChallengeState | null>(null);
   const [countdown, setCountdown] = useState<string>('');
@@ -37,63 +38,117 @@ export const HomeScreen: React.FC = () => {
   const floatAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const storyRef = useRef({ pending: true, shouldShow: false });
+  const floatLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
-    // Check first launch for Story Comic
-    getStorySeen().then(seen => {
-      if (!seen) {
-        setShowStory(true);
-      }
-    }).catch(() => {});
+    let cancelled = false;
+
+    // Atomic story-seen check — never show the HomeScreen until we know,
+    // so the story modal and Home UI appear together on first paint (no pop-in flash)
+    getStorySeen()
+      .then(seen => {
+        if (cancelled) return;
+        const shouldShow = !seen;
+        storyRef.current = { pending: false, shouldShow };
+        // Set both states atomically together — no intermediate render without story
+        if (shouldShow) setShowStory(true);
+        setStoryChecked(true);
+
+        // Only start entrance animations AFTER we know the story state
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            friction: 8,
+            tension: 50,
+            useNativeDriver: true,
+          }),
+        ]).start();
+
+        // Start puppy float loop
+        const floatLoop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(floatAnim, {
+              toValue: -8,
+              duration: 1600,
+              useNativeDriver: true,
+            }),
+            Animated.timing(floatAnim, {
+              toValue: 0,
+              duration: 1600,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+        floatLoopRef.current = floatLoop;
+        floatLoop.start();
+      })
+      .catch(() => {
+        if (cancelled) return;
+        storyRef.current = { pending: false, shouldShow: false };
+        setStoryChecked(true);
+
+        // Still animate in even on error path
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            friction: 8,
+            tension: 50,
+            useNativeDriver: true,
+          }),
+        ]).start();
+
+        const floatLoop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(floatAnim, {
+              toValue: -8,
+              duration: 1600,
+              useNativeDriver: true,
+            }),
+            Animated.timing(floatAnim, {
+              toValue: 0,
+              duration: 1600,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+        floatLoopRef.current = floatLoop;
+        floatLoop.start();
+      });
 
     // Load persisted stats
-    getTotalStats().then(s => setStats(s)).catch(() => {});
+    getTotalStats().then(s => { if (!cancelled) setStats(s); }).catch(() => {});
 
     // Load daily challenge state
-    getDailyChallengeState().then(setDailyState).catch(() => {});
+    getDailyChallengeState().then(d => { if (!cancelled) setDailyState(d); }).catch(() => {});
 
     // Live countdown timer to next daily puzzle
     const updateCountdown = () => {
-      setCountdown(getTimeUntilNextPuzzle().formatted);
+      if (!cancelled) setCountdown(getTimeUntilNextPuzzle().formatted);
     };
     updateCountdown();
     const countdownTimer = setInterval(updateCountdown, 1000);
 
-    // Entrance animation
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 8,
-        tension: 50,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // Gentle puppy float loop
-    const floatLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnim, {
-          toValue: -8,
-          duration: 1600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(floatAnim, {
-          toValue: 0,
-          duration: 1600,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    floatLoop.start();
-
     return () => {
-      floatLoop.stop();
+      cancelled = true;
+      if (floatLoopRef.current) {
+        floatLoopRef.current.stop();
+        floatLoopRef.current = null;
+      }
       clearInterval(countdownTimer);
+      fadeAnim.stopAnimation();
+      scaleAnim.stopAnimation();
+      floatAnim.stopAnimation();
     };
   }, []);
 
@@ -127,6 +182,12 @@ export const HomeScreen: React.FC = () => {
     soundManager.play('button');
     setActiveScreen('map');
   };
+
+  if (!storyChecked) {
+    return (
+      <SafeAreaView style={styles.safeArea} />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

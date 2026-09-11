@@ -57,5 +57,6 @@ const styles = StyleSheet.create({
   },
   screenContainer: {
     flex: 1,
+    backgroundColor: '#FBF9F5',
   },
 });

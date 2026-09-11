@@ -17,27 +17,25 @@ import { PuppySprite } from '../components/assets/PuppySprite';
 import { ChalkMarkSprite } from '../components/assets/ChalkMarkSprite';
 import * as Haptics from 'expo-haptics';
 import {
-  getTutorialSeen,
   setTutorialSeen,
   PuppyMilestone,
   PUPPY_MILESTONES,
   loadClaimedAdoptions,
   saveClaimedAdoptions,
 } from '../utils/storage';
-import { Hint } from '../game/types';
 import { soundManager } from '../utils/soundManager';
-import { recordLevelCompletion, getLevelStats, calculatePawfectStars } from '../utils/statistics';
+import { recordLevelCompletion, getLevelStats } from '../utils/statistics';
 import { getLevelDifficulty, getDifficultyColor, getDifficultyLabel } from '../utils/levelHelpers';
 import { JennyAvatar, JennyMood } from '../components/assets/JennyAvatar';
 import { InteractiveTutorial } from '../components/InteractiveTutorial';
 import { JENNY_CHEERS } from '../data/storyLore';
-export { JENNY_CHEERS };
 import {
   recordDailyCompletion,
   getFormattedTodayDisplay,
   generateDailyShareText,
 } from '../utils/dailyChallenge';
 import { AdoptionModal } from '../components/AdoptionModal';
+import { CHAPTERS } from '../data/chapterData';
 
 
 export const GameScreen: React.FC = () => {
@@ -55,9 +53,6 @@ export const GameScreen: React.FC = () => {
     undo,
     restart,
     keepLooking,
-    getHint,
-    highlightedHint,
-    setHighlightedHint,
     lastWrongCell,
     setLastWrongCell,
     hintsUsed,
@@ -68,7 +63,17 @@ export const GameScreen: React.FC = () => {
     isDailyChallenge,
   } = useGameStore();
 
-  const [cellSize, setCellSize] = useState(60);
+  const calcCellSize = (gridSize: number) => {
+    if (gridSize >= 10) return 30;
+    if (gridSize === 9) return 33;
+    if (gridSize === 8) return 38;
+    if (gridSize === 7) return 42;
+    if (gridSize === 6) return 48;
+    if (gridSize === 5) return 56;
+    return 64;
+  };
+
+  const [cellSize, setCellSize] = useState<number>(() => calcCellSize(board.gridSize));
   const [showTutorial, setShowTutorial] = useState(false);
   const [lastTap, setLastTap] = useState<{ row: number; col: number; time: number } | null>(null);
   const [lastPlacedPuppy, setLastPlacedPuppy] = useState<{ row: number; col: number } | null>(null);
@@ -83,14 +88,6 @@ export const GameScreen: React.FC = () => {
     isNewRecord: boolean;
     reward: string | null;
   } | null>(null);
-
-  const CHAPTERS = [
-    { title: 'Backyard', subtitle: '4×4 – 5×5', start: 1, end: 20 },
-    { title: 'Park', subtitle: '6×6', start: 21, end: 40 },
-    { title: 'Meadow', subtitle: '7×7', start: 41, end: 60 },
-    { title: 'Trail', subtitle: '8×8', start: 61, end: 80 },
-    { title: 'Championship', subtitle: '9×9 – 10×10', start: 81, end: 100 },
-  ];
 
   // Emotional Personality & Milestone States
   const [jennyMood, setJennyMood] = useState<JennyMood>('friendly');
@@ -112,6 +109,9 @@ export const GameScreen: React.FC = () => {
   // Completion Modal State
   const [showCompletionModal, setShowCompletionModal] = useState(false);
 
+  // Readiness gate — prevents flicker from cascading mounts
+  const [isReady, setIsReady] = useState(false);
+
   // Statistics tracking
   const levelStartTime = useRef<number>(Date.now());
   const [levelBestStats, setLevelBestStats] = useState<{ bestMoves: number; bestTime: number } | null>(null);
@@ -123,10 +123,25 @@ export const GameScreen: React.FC = () => {
   const toastFadeAnim = useRef(new Animated.Value(0)).current;
   const completionScaleAnim = useRef(new Animated.Value(0.85)).current;
   const prevHearts = useRef(hearts);
+  const isFirstLevelLoad = useRef(true);
 
-  // Screen transition when level changes
+  // Atomic level initialization + tutorial pre-check — renders all-at-once via isReady
   useEffect(() => {
-    initializeLevel(currentLevel);
+    let cancelled = false;
+
+    // Hide UI immediately on level change so we don't paint stale / transitioning content
+    if (!isFirstLevelLoad.current) {
+      setIsReady(false);
+    }
+
+    // Single-source init:
+    // - First load and Daily Challenge: state was pre-populated atomically by startDailyChallenge()
+    // - First load normal / any internal level swap: generate fresh puzzle now
+    const skipInit = isFirstLevelLoad.current && isDailyChallenge;
+    if (!skipInit) {
+      initializeLevel(currentLevel);
+    }
+
     setShowCompletionModal(false);
     setWrongMoveToast(null);
     setLastPlacedPuppy(null);
@@ -134,59 +149,61 @@ export const GameScreen: React.FC = () => {
     setJennyMood('friendly');
     setShareToast(false);
 
-    // Reset level start time and load stats
     levelStartTime.current = Date.now();
-    getLevelStats(currentLevel).then(stats => {
-      if (stats) {
-        setLevelBestStats({ bestMoves: stats.bestMoves, bestTime: stats.bestTime });
+
+    // Tutorial rules are NO LONGER auto-shown on Level 1 start.
+    // They remain accessible manually via the ? toolbar / Settings.
+    setShowTutorial(false);
+
+    const preloadStats = getLevelStats(currentLevel);
+
+    Promise.all([preloadStats]).then(([stats]) => {
+      if (cancelled) return;
+
+      // Set best stats before render so they appear on first paint
+      setLevelBestStats(stats || null);
+
+      // Immediately correct cell size after initializeLevel mutated board.gridSize
+      setCellSize(calcCellSize(board.gridSize));
+
+      // Flip render gate ONCE — everything shows together
+      setIsReady(true);
+
+      // Now play the enter animation
+      if (isFirstLevelLoad.current) {
+        isFirstLevelLoad.current = false;
+        screenFadeAnim.setValue(1);
+        screenSlideAnim.setValue(0);
       } else {
-        setLevelBestStats(null);
+        screenFadeAnim.setValue(0);
+        screenSlideAnim.setValue(12);
+        Animated.parallel([
+          Animated.timing(screenFadeAnim, {
+            toValue: 1,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+          Animated.timing(screenSlideAnim, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+        ]).start();
       }
     });
 
-    screenFadeAnim.setValue(0);
-    screenSlideAnim.setValue(12);
-    Animated.parallel([
-      Animated.timing(screenFadeAnim, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(screenSlideAnim, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    return () => {
+      cancelled = true;
+    };
   }, [currentLevel, initializeLevel, screenFadeAnim, screenSlideAnim]);
 
-  // Adjust cell size dynamically based on grid size (4x4 up to 10x10)
+  // Adjust cell size dynamically when grid changes (e.g. internal level swap edge-case)
   useEffect(() => {
-    if (board.gridSize >= 10) {
-      setCellSize(30);
-    } else if (board.gridSize === 9) {
-      setCellSize(33);
-    } else if (board.gridSize === 8) {
-      setCellSize(38);
-    } else if (board.gridSize === 7) {
-      setCellSize(42);
-    } else if (board.gridSize === 6) {
-      setCellSize(48);
-    } else if (board.gridSize === 5) {
-      setCellSize(56);
-    } else {
-      setCellSize(64);
-    }
-  }, [board.gridSize]);
-
-  // Tutorial display
-  useEffect(() => {
-    getTutorialSeen().then(hasSeenTutorial => {
-      if (currentLevel === 1 && !hasSeenTutorial) {
-        setShowTutorial(true);
-      }
+    setCellSize(prev => {
+      const next = calcCellSize(board.gridSize);
+      return next === prev ? prev : next;
     });
-  }, [currentLevel]);
+  }, [board.gridSize]);
 
   // Heart decrease animation & sympathetic mood
   useEffect(() => {
@@ -320,20 +337,11 @@ export const GameScreen: React.FC = () => {
     const now = Date.now();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    console.log('[Tap] cell', row, col, 'time', now, 'lastTap', lastTap, 'mode', inputMode);
-
-    // Double‑tap detection: same cell within the allowed window (acts as shortcut to place/toggle puppy)
     if (lastTap && lastTap.row === row && lastTap.col === col && now - lastTap.time < DOUBLE_TAP_MAX_DELAY) {
-      console.log('[DoubleTap] detected on same cell');
-      console.log('[DoubleTap] interval', now - lastTap.time, 'ms');
-      
-      // Undo the X that was placed on first tap if it was marked
       if (board.cells[row]?.[col]?.value === 'marked') {
         undo();
       }
-      
       const success = placePuppy(row, col);
-      console.log('[DoubleTap] placePuppy result', success);
       if (!success) {
         showWrongFeedback(row, col);
       } else {
@@ -341,12 +349,10 @@ export const GameScreen: React.FC = () => {
         setLastPlacedPuppy({ row, col });
       }
       setLastTap(null);
-      return; // Double‑tap handled, exit early
+      return;
     }
 
     if (inputMode === 'puppy') {
-      // Puppy Mode: Single tap places or toggles off puppy
-      console.log('[SingleTap - PuppyMode] placing/toggling puppy');
       const success = placePuppy(row, col);
       if (!success) {
         showWrongFeedback(row, col);
@@ -356,8 +362,6 @@ export const GameScreen: React.FC = () => {
       }
       setLastTap({ row, col, time: now });
     } else {
-      // Mark Mode: Single tap places/clears ✕
-      console.log('[SingleTap - MarkMode] marking cell');
       markCell(row, col);
       soundManager.play('markX');
       setLastTap({ row, col, time: now });
@@ -418,7 +422,7 @@ export const GameScreen: React.FC = () => {
     setShowCompletionModal(false);
     setLastPlacedPuppy(null);
     setIsDragging(false);
-    if (currentLevel < 100) {
+    if (currentLevel < 1000) {
       initializeLevel(currentLevel + 1);
     } else {
       initializeLevel(1);
@@ -430,11 +434,13 @@ export const GameScreen: React.FC = () => {
       style={[
         styles.container,
         {
-          opacity: screenFadeAnim,
-          transform: [{ translateY: screenSlideAnim }],
+          opacity: isFirstLevelLoad.current ? 1 : screenFadeAnim,
+          transform: [{ translateY: isFirstLevelLoad.current ? 0 : screenSlideAnim }],
         },
       ]}
     >
+      {!isReady ? null : (
+        <>
       {/* Interactive 3-Rule Spotlight Tutorial */}
       <InteractiveTutorial
         visible={showTutorial}
@@ -457,7 +463,6 @@ export const GameScreen: React.FC = () => {
       {/* Game Over / Out of Hearts Modal */}
       {isGameOver && (
         <View style={styles.modalOverlay}>
-          <Confetti visible={isGameOver} />
           <View style={styles.gameOverModal}>
             <Text style={styles.modalBigEmoji}>🐶</Text>
             <Text style={styles.gameOverTitle}>Oops! The puppy got away.</Text>
@@ -545,10 +550,6 @@ export const GameScreen: React.FC = () => {
                 <Text style={styles.statLabel}>❤️ Hearts Left</Text>
                 <Text style={styles.statValue}>{hearts} / 3</Text>
               </View>
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>💡 Hints Used</Text>
-                <Text style={styles.statValue}>{hintsUsed}</Text>
-              </View>
               {levelBestStats && (
                 <View style={styles.bestStatsRow}>
                   <Text style={styles.bestStatsLabel}>Best: {levelBestStats.bestMoves} moves • {Math.floor(levelBestStats.bestTime / 60)}:{(levelBestStats.bestTime % 60).toString().padStart(2, '0')}</Text>
@@ -588,7 +589,7 @@ export const GameScreen: React.FC = () => {
               ) : (
                 <TouchableOpacity style={styles.primaryButton} onPress={handleNextLevel}>
                   <Text style={styles.primaryButtonText}>
-                    {currentLevel === 1000 ? '🔄 Play Again' : 'Next Level ➡️'}
+                    {currentLevel >= 1000 ? '🔄 Play Again' : 'Next Level ➡️'}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -631,7 +632,14 @@ export const GameScreen: React.FC = () => {
           <View style={styles.levelModal}>
             <View style={styles.levelModalHeader}>
               <Text style={styles.levelModalTitle}>🗺️ Choose Level</Text>
-              <TouchableOpacity onPress={() => setShowLevelSelectModal(false)} style={styles.hintCloseIcon}>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowLevelSelectModal(false);
+                }}
+                style={styles.hintCloseIcon}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
                 <Text style={styles.hintCloseIconText}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -640,25 +648,53 @@ export const GameScreen: React.FC = () => {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chapterTabBar}>
               {CHAPTERS.map((ch, idx) => (
                 <TouchableOpacity
-                  key={idx}
+                  key={ch.id}
                   style={[
                     styles.chapterTabButton,
-                    selectedChapter === idx && styles.chapterTabButtonActive,
+                    selectedChapter === idx && [
+                      styles.chapterTabButtonActive,
+                      { borderColor: ch.accentColor, backgroundColor: ch.accentColor + '15' },
+                    ],
                   ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setSelectedChapter(idx);
                   }}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.chapterTabTitle, selectedChapter === idx && styles.chapterTabTitleActive]}>
+                  <Text style={styles.chapterTabEmoji}>{ch.icon}</Text>
+                  <Text
+                    style={[
+                      styles.chapterTabTitle,
+                      selectedChapter === idx && [styles.chapterTabTitleActive, { color: ch.accentColor }],
+                    ]}
+                    numberOfLines={1}
+                  >
                     {ch.title}
                   </Text>
                   <Text style={[styles.chapterTabSub, selectedChapter === idx && styles.chapterTabSubActive]}>
-                    {ch.subtitle}
+                    {ch.gridSizes}
                   </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
+
+            {/* Chapter info subtitle */}
+            <View style={styles.levelModalChapterInfo}>
+              <Text style={styles.levelModalChapterRange}>
+                Levels {CHAPTERS[selectedChapter].start}–{CHAPTERS[selectedChapter].end}
+              </Text>
+              <View
+                style={[
+                  styles.levelModalDiffBadge,
+                  { backgroundColor: CHAPTERS[selectedChapter].accentColor },
+                ]}
+              >
+                <Text style={styles.levelModalDiffBadgeText}>
+                  {CHAPTERS[selectedChapter].difficultyBadge}
+                </Text>
+              </View>
+            </View>
 
             {/* Level Grid for current chapter */}
             <ScrollView style={styles.levelGridScroll}>
@@ -682,6 +718,7 @@ export const GameScreen: React.FC = () => {
                       ]}
                       onPress={() => handleLevelSelect(level)}
                       disabled={isLocked}
+                      activeOpacity={0.7}
                     >
                       <Text style={[styles.levelGridItemNumber, isLocked && styles.levelGridItemLockedText]}>
                         {isLocked ? '🔒' : level}
@@ -700,74 +737,82 @@ export const GameScreen: React.FC = () => {
 
       {/* Clean Top Navigation Bar */}
       <View style={styles.topNavBar}>
-        <TouchableOpacity
-          style={styles.navIconButton}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            soundManager.play('button');
-            setActiveScreen(isDailyChallenge ? 'home' : 'map');
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.navButtonText}>{isDailyChallenge ? '⬅️ Home' : '⬅️ Map'}</Text>
-        </TouchableOpacity>
-
-        <View style={styles.centerLevelInfo}>
-          <Text style={styles.navTitle}>
-            {isDailyChallenge ? 'Daily Garden' : `Level ${currentLevel}`}
-          </Text>
-          <View
-            style={[
-              styles.difficultyBadgeHeader,
-              {
-                backgroundColor: isDailyChallenge
-                  ? '#E65100'
-                  : getDifficultyColor(getLevelDifficulty(currentLevel)),
-              },
-            ]}
+        <View style={styles.topNavSide}>
+          <TouchableOpacity
+            style={styles.navIconButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              soundManager.play('button');
+              setActiveScreen(isDailyChallenge ? 'home' : 'map');
+            }}
+            activeOpacity={0.7}
           >
-            <Text style={styles.difficultyBadgeHeaderText}>
-              {isDailyChallenge ? '🔥 Daily' : getDifficultyLabel(getLevelDifficulty(currentLevel))}
-            </Text>
-          </View>
+            <Text style={styles.navButtonText}>{isDailyChallenge ? '⬅️ Home' : '⬅️ Map'}</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.rightNavActions}>
-          <TouchableOpacity
-            style={styles.navIconButton}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              soundManager.play('button');
-              setShowTutorial(true);
-            }}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.navButtonText}>❓</Text>
-          </TouchableOpacity>
+        <View style={styles.centerLevelGroup}>
+          <View style={styles.centerLevelInfo}>
+            <Text style={styles.navTitle}>
+              {isDailyChallenge ? 'Daily Garden' : `Level ${currentLevel}`}
+            </Text>
+            <View
+              style={[
+                styles.difficultyBadgeHeader,
+                {
+                  backgroundColor: isDailyChallenge
+                    ? '#E65100'
+                    : getDifficultyColor(getLevelDifficulty(currentLevel)),
+                },
+              ]}
+            >
+              <Text style={styles.difficultyBadgeHeaderText}>
+                {isDailyChallenge ? '🔥 Daily' : getDifficultyLabel(getLevelDifficulty(currentLevel))}
+              </Text>
+            </View>
+          </View>
+          {!isDailyChallenge && (
+            <TouchableOpacity
+              style={styles.levelJumpButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                soundManager.play('button');
+                const initialIdx = Math.max(0, Math.min(49, Math.floor((currentLevel - 1) / 20)));
+                setSelectedChapter(initialIdx);
+                setShowLevelSelectModal(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.levelJumpButtonText}>�</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-          <TouchableOpacity
-            style={styles.navIconButton}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              soundManager.play('button');
-              setActiveScreen('home');
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.navButtonText}>🏠</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navIconButton}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowSettingsModal(true);
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.navButtonText}>⚙️</Text>
-          </TouchableOpacity>
+        <View style={[styles.topNavSide, styles.topNavSideRight]}>
+          <View style={styles.rightNavActions}>
+            <TouchableOpacity
+              style={styles.navIconButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                soundManager.play('button');
+                setShowTutorial(true);
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.navButtonText}>❓</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.navIconButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowSettingsModal(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.navButtonText}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -805,7 +850,6 @@ export const GameScreen: React.FC = () => {
           onCellPress={handleCellPress}
           onMarkCell={handleMarkCell}
           cellSize={cellSize}
-          highlightedHint={highlightedHint}
           wrongCell={lastWrongCell}
           isCompleting={isComplete}
           onDragStart={handleDragStart}
@@ -872,6 +916,8 @@ export const GameScreen: React.FC = () => {
         milestone={activeMilestone}
         onClose={() => setActiveMilestone(null)}
       />
+        </>
+      )}
     </Animated.View>
   );
 };
@@ -879,7 +925,7 @@ export const GameScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F4EE',
+    backgroundColor: '#FBF9F5',
     padding: 20,
     justifyContent: 'center',
     alignItems: 'center',
@@ -925,21 +971,27 @@ const styles = StyleSheet.create({
   levelButton: {
     paddingVertical: 8,
     paddingHorizontal: 14,
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: '#333',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2D9C8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
   activeLevelButton: {
-    backgroundColor: '#87CEEB',
+    backgroundColor: '#FFF3E0',
+    borderColor: '#E67E22',
   },
   lockedLevelButton: {
     opacity: 0.45,
   },
   levelButtonText: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '700',
+    color: '#5A5245',
   },
   lockedLevelButtonText: {
     color: '#888',
@@ -965,24 +1017,29 @@ const styles = StyleSheet.create({
   },
   controls: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
     flexWrap: 'wrap',
     justifyContent: 'center',
     marginTop: 8,
   },
   controlButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#FFD700',
-    borderWidth: 2,
-    borderColor: '#333',
-    minWidth: 85,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    borderRadius: 18,
+    backgroundColor: '#FFFBF2',
+    borderWidth: 1.5,
+    borderColor: '#F5DCB7',
+    minWidth: 100,
+    shadowColor: '#E67E22',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   controlButtonText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#6E4822',
     textAlign: 'center',
   },
 
@@ -993,136 +1050,61 @@ const styles = StyleSheet.create({
     zIndex: 999,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF0F0',
-    borderColor: '#E63946',
-    borderWidth: 2,
-    paddingVertical: 10,
+    backgroundColor: '#FFF6F4',
+    borderColor: '#F3C7C2',
+    borderWidth: 1.5,
+    paddingVertical: 11,
     paddingHorizontal: 18,
-    borderRadius: 12,
+    borderRadius: 16,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 6,
+    shadowColor: '#B03A2E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
   },
   wrongToastIcon: {
     fontSize: 24,
   },
   wrongToastTitle: {
     fontSize: 15,
-    fontWeight: 'bold',
-    color: '#E63946',
+    fontWeight: '800',
+    color: '#B03A2E',
   },
   wrongToastSub: {
     fontSize: 13,
-    color: '#555',
+    fontWeight: '600',
+    color: '#8A7A68',
   },
 
-  /* Floating Hint Card */
-  hintCardOverlay: {
-    position: 'absolute',
-    top: 55,
-    zIndex: 900,
-    width: '92%',
-    alignItems: 'center',
-  },
-  hintCard: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: '#FFD700',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  hintCardHeader: {
+  /* Level Select Modal */
+  levelModalChapterInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    paddingHorizontal: 4,
+    marginBottom: 12,
   },
-  hintJennyHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  levelModalChapterRange: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#5A5245',
+    letterSpacing: 0.2,
   },
-  hintJennyTitleGroup: {
-    gap: 2,
+  levelModalDiffBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
-  hintJennyName: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#2C3E50',
-  },
-  hintCardBadge: {
-    backgroundColor: '#FFF9D2',
-    color: '#B8860B',
+  levelModalDiffBadgeText: {
     fontSize: 11,
-    fontWeight: 'bold',
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 0.4,
   },
-  hintSpeechBubble: {
-    backgroundColor: '#FDFCF8',
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#EFE7D8',
-    marginBottom: 10,
-  },
-  hintCloseIcon: {
-    padding: 4,
-  },
-  hintCloseIconText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#888',
-  },
-  hintCardTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  hintCardText: {
-    fontSize: 14,
-    color: '#444',
-    lineHeight: 19,
-    fontStyle: 'italic',
-  },
-  hintCardActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  hintSecondaryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    backgroundColor: '#F0F0F0',
-  },
-  hintSecondaryButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#555',
-  },
-  hintPrimaryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    backgroundColor: '#FFD700',
-  },
-  hintPrimaryButtonText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#333',
+  chapterTabEmoji: {
+    fontSize: 18,
+    marginBottom: 2,
   },
 
   /* Modals */
@@ -1149,43 +1131,57 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   primaryButton: {
-    backgroundColor: '#87CEEB',
-    paddingVertical: 13,
-    borderRadius: 8,
+    backgroundColor: '#27AE60',
+    paddingVertical: 14,
+    borderRadius: 18,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#333',
+    shadowColor: '#27AE60',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   primaryButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.1,
   },
   secondaryButton: {
-    backgroundColor: '#fff',
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 13,
+    borderRadius: 16,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#999',
+    borderWidth: 1.5,
+    borderColor: '#E2D9C8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 1,
   },
   secondaryButtonText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#555',
+    fontWeight: '700',
+    color: '#5A5245',
   },
   mapButtonModal: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: '#FFFBF2',
+    paddingVertical: 13,
+    borderRadius: 16,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#4A90E2',
+    borderWidth: 1.5,
+    borderColor: '#F5DCB7',
+    shadowColor: '#E67E22',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   mapButtonModalText: {
     fontSize: 15,
-    fontWeight: 'bold',
-    color: '#2563EB',
+    fontWeight: '700',
+    color: '#6E4822',
   },
 
   /* Paw-fect Star System & Daily Share Styles */
@@ -1282,59 +1278,71 @@ const styles = StyleSheet.create({
 
   /* Game Over Modal */
   gameOverModal: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF9',
     padding: 24,
-    borderRadius: 14,
+    borderRadius: 20,
     width: '88%',
     alignItems: 'center',
     elevation: 6,
-    borderWidth: 2,
-    borderColor: '#E63946',
+    borderWidth: 1.5,
+    borderColor: '#F3C7C2',
+    shadowColor: '#B03A2E',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
   },
   gameOverTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#E63946',
+    fontWeight: '800',
+    color: '#B03A2E',
     textAlign: 'center',
     marginBottom: 6,
   },
   gameOverSub: {
     fontSize: 15,
-    color: '#666',
+    color: '#7F7567',
     textAlign: 'center',
     marginBottom: 8,
   },
   gameOverRestartButton: {
-    backgroundColor: '#FF6B6B',
-    paddingVertical: 13,
-    borderRadius: 8,
+    backgroundColor: '#E57373',
+    paddingVertical: 14,
+    borderRadius: 16,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#333',
+    shadowColor: '#E57373',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   gameOverKeepButton: {
-    backgroundColor: '#F0F0F0',
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 13,
+    borderRadius: 16,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#333',
+    borderWidth: 1.5,
+    borderColor: '#E2D9C8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
 
   /* Completion Modal */
   completionModal: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFDF9',
     padding: 24,
-    borderRadius: 20,
+    borderRadius: 22,
     width: '90%',
     maxWidth: 380,
     alignItems: 'center',
     elevation: 8,
-    borderWidth: 2.5,
-    borderColor: '#FFD700',
-    shadowColor: '#000',
+    borderWidth: 1.5,
+    borderColor: '#FFE8A3',
+    shadowColor: '#E67E22',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.12,
     shadowRadius: 16,
   },
   completionJennyRow: {
@@ -1382,12 +1390,12 @@ const styles = StyleSheet.create({
   },
   statsCard: {
     width: '100%',
-    backgroundColor: '#F9F9F9',
-    borderRadius: 10,
-    padding: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    backgroundColor: '#FFFDF8',
+    borderRadius: 14,
+    padding: 14,
+    gap: 9,
+    borderWidth: 1.5,
+    borderColor: '#EFE7D8',
   },
   statRow: {
     flexDirection: 'row',
@@ -1396,12 +1404,13 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 14,
-    color: '#666',
+    fontWeight: '600',
+    color: '#7F7567',
   },
   statValue: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '800',
+    color: '#2C2A29',
   },
   statBadge: {
     fontSize: 14,
@@ -1409,13 +1418,14 @@ const styles = StyleSheet.create({
   },
   bestStatsRow: {
     marginTop: 8,
-    paddingTop: 8,
+    paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#ddd',
+    borderTopColor: '#EFE7D8',
   },
   bestStatsLabel: {
-    fontSize: 13,
-    color: '#666',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8A7A68',
     textAlign: 'center',
   },
   modeSwitcherContainer: {
@@ -1474,34 +1484,74 @@ const styles = StyleSheet.create({
   // New Header & Navigation Bar
   topNavBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     width: '100%',
-    paddingHorizontal: 8,
-    marginBottom: 8,
+    paddingHorizontal: 6,
+    marginBottom: 10,
+    paddingTop: 2,
+  },
+  topNavSide: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  topNavSideRight: {
+    justifyContent: 'flex-end',
+  },
+  centerLevelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FFFDF9',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EFE7D8',
+    shadowColor: '#5C4A38',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  levelJumpButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#F5EFE3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelJumpButtonText: {
+    fontSize: 16,
   },
   rightNavActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    backgroundColor: '#FFFDF8',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EFE7D8',
+    shadowColor: '#5C4A38',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 4,
+    elevation: 2,
+    marginLeft: 'auto',
   },
   navIconButton: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0DAD0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+    backgroundColor: 'transparent',
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 10,
   },
   navButtonText: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '700',
+    color: '#5A5245',
   },
   centerLevelInfo: {
     alignItems: 'center',
@@ -1705,6 +1755,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2C2A29',
   },
+  hintCloseIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F5EFE3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hintCloseIconText: {
+    fontSize: 16,
+    color: '#8A7A68',
+    fontWeight: '700',
+  },
   chapterTabBar: {
     maxHeight: 52,
     marginBottom: 12,
@@ -1712,29 +1775,40 @@ const styles = StyleSheet.create({
   chapterTabButton: {
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: '#F3EDE4',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
     marginRight: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#EFE7D8',
+    minWidth: 84,
+    shadowColor: '#5C4A38',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
   chapterTabButtonActive: {
-    backgroundColor: '#2A9D8F',
+    backgroundColor: '#FFF3E0',
+    borderColor: '#E67E22',
+    borderWidth: 1.5,
   },
   chapterTabTitle: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#666',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7F7567',
   },
   chapterTabTitleActive: {
-    color: '#FFF',
+    color: '#D35400',
   },
   chapterTabSub: {
     fontSize: 10,
-    color: '#888',
+    color: '#A49B8D',
+    fontWeight: '600',
   },
   chapterTabSubActive: {
-    color: '#E0F2F1',
+    color: '#B8860B',
   },
   levelGridScroll: {
     maxHeight: 320,

@@ -18,7 +18,6 @@ interface CellProps {
   onPress: () => void;
   regionId?: number;
   size: number;
-  isHighlighted?: boolean;
   isWrong?: boolean;
   isCompleting?: boolean;
   borders?: CellBorders;
@@ -31,7 +30,6 @@ export const Cell: React.FC<CellProps> = ({
   onPress,
   regionId,
   size,
-  isHighlighted,
   isWrong,
   isCompleting,
   borders = { top: true, bottom: true, left: true, right: true },
@@ -40,7 +38,6 @@ export const Cell: React.FC<CellProps> = ({
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
   const heartAnim = useRef(new Animated.Value(0)).current;
   const [showHeart, setShowHeart] = useState(false);
   const prevValue = useRef(value);
@@ -90,25 +87,6 @@ export const Cell: React.FC<CellProps> = ({
     }
   }, [isWrong, shakeAnim]);
 
-  // Animate subtle pulse on hint highlight
-  useEffect(() => {
-    if (isHighlighted) {
-      const pulseLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.08, duration: 400, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
-        ])
-      );
-      pulseLoop.start();
-      return () => {
-        pulseLoop.stop();
-        pulseAnim.setValue(1);
-      };
-    } else {
-      pulseAnim.setValue(1);
-    }
-  }, [isHighlighted, pulseAnim]);
-
   // Cycle breeds by region or location for warm visual variety
   const breeds: PuppyBreed[] = ['corgi', 'golden', 'shiba'];
   const breedIndex = regionId ? (regionId - 1) % breeds.length : (row + col) % breeds.length;
@@ -147,7 +125,7 @@ export const Cell: React.FC<CellProps> = ({
       style={{
         transform: [
           { translateX: shakeAnim },
-          { scale: isHighlighted ? pulseAnim : scaleAnim },
+          { scale: scaleAnim },
         ],
       }}
     >
@@ -161,7 +139,6 @@ export const Cell: React.FC<CellProps> = ({
               backgroundColor: getRegionColor(regionId),
             },
             boundaryStyle,
-            isHighlighted && styles.highlightedCell,
             isWrong && styles.wrongCell,
           ]}
           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -208,8 +185,6 @@ export const Cell: React.FC<CellProps> = ({
               ❤️
             </Animated.Text>
           )}
-
-          {isHighlighted && <View style={styles.hintOverlay} />}
         </View>
       </GestureDetector>
     </Animated.View>
@@ -230,25 +205,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     zIndex: 25,
   },
-  highlightedCell: {
-    borderColor: '#F39C12',
-    borderWidth: 3,
-    shadowColor: '#F39C12',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
-    elevation: 6,
-  },
   wrongCell: {
     borderColor: '#D9534F',
     borderWidth: 3,
-  },
-  hintOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 235, 140, 0.35)',
   },
 });

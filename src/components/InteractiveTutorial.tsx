@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Dimensions,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { soundManager } from '../utils/soundManager';
@@ -29,18 +28,47 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
 }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [hasTappedStep1, setHasTappedStep1] = useState(false);
+  const [contentKey, setContentKey] = useState(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const mountedRef = useRef(false);
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(15)).current;
+  const contentFadeAnim = useRef(new Animated.Value(1)).current;
+
+  const clearAllTimers = () => {
+    timersRef.current.forEach(t => clearTimeout(t));
+    timersRef.current = [];
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearAllTimers();
+      if (pulseLoopRef.current) {
+        pulseLoopRef.current.stop();
+        pulseLoopRef.current = null;
+      }
+      pulseAnim.stopAnimation();
+      fadeAnim.stopAnimation();
+      slideAnim.stopAnimation();
+      contentFadeAnim.stopAnimation();
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) {
+      clearAllTimers();
       setStep(1);
       setHasTappedStep1(false);
+      setContentKey(k => k + 1);
       fadeAnim.setValue(0);
       slideAnim.setValue(15);
+      contentFadeAnim.setValue(1);
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
         Animated.spring(slideAnim, { toValue: 0, friction: 8, useNativeDriver: true }),
@@ -50,14 +78,23 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
 
   useEffect(() => {
     // Pulse animation for target spotlight
+    if (pulseLoopRef.current) {
+      pulseLoopRef.current.stop();
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.15, duration: 600, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       ])
     );
+    pulseLoopRef.current = loop;
     loop.start();
-    return () => loop.stop();
+    return () => {
+      if (pulseLoopRef.current) {
+        pulseLoopRef.current.stop();
+        pulseLoopRef.current = null;
+      }
+    };
   }, [pulseAnim]);
 
   if (!visible) return null;
@@ -66,40 +103,48 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     soundManager.play('placePuppy');
     setHasTappedStep1(true);
-    // Place puppy at target cell (1, 3) for level 1
-    onPlacePuppy(1, 3);
+    // Do NOT place puppy on actual board during tutorial — visual only (hasTappedStep1)
+    // The real placement happens on tutorial finish so board is clean until then
 
     // Auto advance to step 2 after a brief celebratory moment
-    setTimeout(() => {
+    const t = setTimeout(() => {
       advanceToStep(2);
     }, 700);
+    timersRef.current.push(t);
   };
 
   const advanceToStep = (nextStep: 2 | 3) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     soundManager.play('button');
 
-    if (nextStep === 2) {
-      // Auto-mark personal space cells around (1, 3)
-      onMarkCell(0, 2);
-      onMarkCell(0, 3);
-      onMarkCell(1, 2);
-      onMarkCell(2, 2);
-      onMarkCell(2, 3);
-    }
+    // Do NOT call onMarkCell during tutorial — those visuals are for learning only.
+    // The real game board must stay clean until user finishes tutorial.
 
-    Animated.sequence([
-      Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(fadeAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
-    ]).start();
-
-    setStep(nextStep);
+    // Step change: fade content OUT → swap step → fade content IN.
+    // This prevents "flash" where new content appears mid-fade.
+    Animated.timing(contentFadeAnim, {
+      toValue: 0,
+      duration: 120,
+      useNativeDriver: true,
+    }).start(() => {
+      if (!mountedRef.current) return;
+      setStep(nextStep);
+      setContentKey(k => k + 1);
+      Animated.timing(contentFadeAnim, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
+    });
   };
 
   const handleFinish = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     soundManager.play('complete');
     setTutorialSeen(true);
+    // NEVER auto-place on finish — getRandomizedLevel1() randomly transforms the puzzle,
+    // so hardcoded (1, 3) is WRONG 7/8 of the time. The single-cell colour
+    // region could be at any of 8 positions. User applies the concept on a clean board.
     onClose();
   };
 
@@ -107,6 +152,7 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     soundManager.play('button');
     setTutorialSeen(true);
+    // Skip = board stays clean, no auto-placements (user wants to try it fresh)
     onClose();
   };
 
@@ -121,7 +167,7 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
           },
         ]}
       >
-        {/* Top Bar with Step indicator and Skip */}
+        {/* Top Bar with Step indicator and Skip — stays stable across steps */}
         <View style={styles.header}>
           <View style={styles.stepBadge}>
             <Text style={styles.stepBadgeText}>Rule {step} of 3</Text>
@@ -131,140 +177,148 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Character Lore Speech Card */}
-        <View style={styles.dialogueCard}>
-          <View style={styles.avatarWrapper}>
-            <JennyAvatar size={54} mood={step === 3 ? 'cheering' : 'friendly'} />
-          </View>
-          <View style={styles.speechContent}>
-            <Text style={styles.speakerName}>Jenny</Text>
-            {step === 1 && (
-              <Text style={styles.ruleTitle}>
-                "Every color patch has exactly ONE puppy!"
-              </Text>
-            )}
-            {step === 2 && (
-              <Text style={styles.ruleTitle}>
-                "Puppies need personal space! They cannot touch—not even diagonally!"
-              </Text>
-            )}
-            {step === 3 && (
-              <Text style={styles.ruleTitle}>
-                "Each row and column only has room for ONE puppy!"
-              </Text>
-            )}
-
-            <Text style={styles.ruleExplanation}>
-              {step === 1 &&
-                "Notice this small single-cell patch? A puppy must go right here! Tap the spotlight to place our first pup."}
-              {step === 2 &&
-                "See those ✕ marks around the puppy? No other dog can touch this pup, even diagonally. They love their naps undisturbed!"}
-              {step === 3 &&
-                "Every row, column, and color patch will have exactly 1 happy puppy. You're ready to solve Level 1!"}
-            </Text>
-          </View>
-        </View>
-
-        {/* Interactive Spotlight Demonstration Box */}
-        <View style={styles.spotlightCard}>
-          {step === 1 && (
-            <View style={styles.spotlightInteractiveArea}>
-              <Text style={styles.interactiveInstruction}>
-                👇 Tap the sunny spot below:
-              </Text>
-
-              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <TouchableOpacity
-                  style={[
-                    styles.targetSpotlightCell,
-                    hasTappedStep1 && styles.targetSpotlightCellTapped,
-                  ]}
-                  onPress={handleStep1Tap}
-                  activeOpacity={0.8}
-                >
-                  {hasTappedStep1 ? (
-                    <PuppySprite size={46} breed="corgi" />
-                  ) : (
-                    <View style={styles.targetInnerGlow}>
-                      <Text style={styles.tapHandEmoji}>👆</Text>
-                      <Text style={styles.targetLabel}>TAP HERE</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </Animated.View>
-
-              {hasTappedStep1 && (
-                <Text style={styles.successNote}>🎉 Splendid! Puppy placed!</Text>
+        {/* Content area fades between steps — prevents flicker from React re-mounting */}
+        <Animated.View
+          key={contentKey}
+          style={{
+            opacity: contentFadeAnim,
+          }}
+        >
+          {/* Character Lore Speech Card */}
+          <View style={styles.dialogueCard}>
+            <View style={styles.avatarWrapper}>
+              <JennyAvatar size={54} mood={step === 3 ? 'cheering' : 'friendly'} />
+            </View>
+            <View style={styles.speechContent}>
+              <Text style={styles.speakerName}>Jenny</Text>
+              {step === 1 && (
+                <Text style={styles.ruleTitle}>
+                  "Every color patch has exactly ONE puppy!"
+                </Text>
               )}
-            </View>
-          )}
+              {step === 2 && (
+                <Text style={styles.ruleTitle}>
+                  "Puppies need personal space! They cannot touch—not even diagonally!"
+                </Text>
+              )}
+              {step === 3 && (
+                <Text style={styles.ruleTitle}>
+                  "Each row and column only has room for ONE puppy!"
+                </Text>
+              )}
 
-          {step === 2 && (
-            <View style={styles.spotlightInteractiveArea}>
-              <View style={styles.miniSpaceGrid}>
-                {/* Visual 3x3 showing puppy in center and ✕ all around */}
-                <View style={styles.miniRow}>
-                  <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                  <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                  <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                </View>
-                <View style={styles.miniRow}>
-                  <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                  <View style={styles.miniPuppyCenter}>
-                    <PuppySprite size={32} breed="corgi" />
-                  </View>
-                  <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                </View>
-                <View style={styles.miniRow}>
-                  <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                  <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                  <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                </View>
-              </View>
-
-              <Text style={styles.spaceNote}>
-                🛡️ 8-directional personal space buffer is now marked!
+              <Text style={styles.ruleExplanation}>
+                {step === 1 &&
+                  "Notice this small single-cell patch? A puppy must go right here! Tap the spotlight to place our first pup."}
+                {step === 2 &&
+                  "See those ✕ marks around the puppy? No other dog can touch this pup, even diagonally. They love their naps undisturbed!"}
+                {step === 3 &&
+                  "Every row, column, and color patch will have exactly 1 happy puppy. You're ready to solve Level 1!"}
               </Text>
-
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => advanceToStep(3)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.actionButtonText}>Next: Row & Column Rule ➡️</Text>
-              </TouchableOpacity>
             </View>
-          )}
+          </View>
 
-          {step === 3 && (
-            <View style={styles.spotlightInteractiveArea}>
-              <View style={styles.ruleSummaryCard}>
-                <View style={styles.summaryItem}>
-                  <Text style={styles.summaryIcon}>🎨</Text>
-                  <Text style={styles.summaryText}>1 Puppy per Color Patch</Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryItem}>
-                  <Text style={styles.summaryIcon}>🚫</Text>
-                  <Text style={styles.summaryText}>No Touching (even diagonally)</Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryItem}>
-                  <Text style={styles.summaryIcon}>↔️</Text>
-                  <Text style={styles.summaryText}>1 Puppy per Row & Column</Text>
-                </View>
+          {/* Interactive Spotlight Demonstration Box */}
+          <View style={styles.spotlightCard}>
+            {step === 1 && (
+              <View key="step1" style={styles.spotlightInteractiveArea}>
+                <Text style={styles.interactiveInstruction}>
+                  👇 Tap the sunny spot below:
+                </Text>
+
+                <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.targetSpotlightCell,
+                      hasTappedStep1 && styles.targetSpotlightCellTapped,
+                    ]}
+                    onPress={handleStep1Tap}
+                    activeOpacity={0.8}
+                  >
+                    {hasTappedStep1 ? (
+                      <PuppySprite size={46} breed="corgi" />
+                    ) : (
+                      <View style={styles.targetInnerGlow}>
+                        <Text style={styles.tapHandEmoji}>👆</Text>
+                        <Text style={styles.targetLabel}>TAP HERE</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </Animated.View>
+
+                {hasTappedStep1 && (
+                  <Text style={styles.successNote}>🎉 Splendid! Puppy placed!</Text>
+                )}
               </View>
+            )}
 
-              <TouchableOpacity
-                style={[styles.actionButton, styles.finishButton]}
-                onPress={handleFinish}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.actionButtonText}>Let's Solve Level 1! 🐕</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+            {step === 2 && (
+              <View key="step2" style={styles.spotlightInteractiveArea}>
+                <View style={styles.miniSpaceGrid}>
+                  {/* Visual 3x3 showing puppy in center and ✕ all around */}
+                  <View style={styles.miniRow}>
+                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                  </View>
+                  <View style={styles.miniRow}>
+                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniPuppyCenter}>
+                      <PuppySprite size={32} breed="corgi" />
+                    </View>
+                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                  </View>
+                  <View style={styles.miniRow}>
+                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                  </View>
+                </View>
+
+                <Text style={styles.spaceNote}>
+                  🛡️ 8-directional personal space buffer is now marked!
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => advanceToStep(3)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.actionButtonText}>Next: Row & Column Rule ➡️</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {step === 3 && (
+              <View key="step3" style={styles.spotlightInteractiveArea}>
+                <View style={styles.ruleSummaryCard}>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryIcon}>🎨</Text>
+                    <Text style={styles.summaryText}>1 Puppy per Color Patch</Text>
+                  </View>
+                  <View style={styles.summaryDivider} />
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryIcon}>🚫</Text>
+                    <Text style={styles.summaryText}>No Touching (even diagonally)</Text>
+                  </View>
+                  <View style={styles.summaryDivider} />
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryIcon}>↔️</Text>
+                    <Text style={styles.summaryText}>1 Puppy per Row & Column</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.finishButton]}
+                  onPress={handleFinish}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.actionButtonText}>Let's Solve Level 1! 🐕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </Animated.View>
       </Animated.View>
     </View>
   );

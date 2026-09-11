@@ -58,16 +58,44 @@ export const StoryComicModal: React.FC<StoryComicModalProps> = ({
   onStartGame,
 }) => {
   const [currentPage, setCurrentPage] = useState(0);
+  const [pageKey, setPageKey] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const mountedRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
+  // Separate mount-in animation so the shell only fades in once (not on every page)
+  const shellFadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      fadeAnim.stopAnimation();
+      slideAnim.stopAnimation();
+      shellFadeAnim.stopAnimation();
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) {
       setCurrentPage(0);
+      setPageKey(k => k + 1);
+      setIsTransitioning(false);
       fadeAnim.setValue(1);
       slideAnim.setValue(0);
+      shellFadeAnim.setValue(0);
+      Animated.timing(shellFadeAnim, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      setIsTransitioning(false);
+      fadeAnim.stopAnimation();
+      slideAnim.stopAnimation();
+      shellFadeAnim.stopAnimation();
     }
-  }, [visible, fadeAnim, slideAnim]);
+  }, [visible, fadeAnim, slideAnim, shellFadeAnim]);
 
   if (!visible) return null;
 
@@ -75,32 +103,46 @@ export const StoryComicModal: React.FC<StoryComicModalProps> = ({
   const isLastPage = currentPage === COMIC_PAGES.length - 1;
 
   const transitionToPage = (newPage: number, direction: 'forward' | 'backward') => {
+    if (isTransitioning || newPage < 0 || newPage >= COMIC_PAGES.length) return;
+    setIsTransitioning(true);
+
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 120,
+        duration: 130,
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
-        toValue: direction === 'forward' ? -20 : 20,
-        duration: 120,
+        toValue: direction === 'forward' ? -18 : 18,
+        duration: 130,
         useNativeDriver: true,
       }),
-    ]).start(() => {
+    ]).start(({ finished }) => {
+      if (!finished || !mountedRef.current) {
+        if (mountedRef.current) setIsTransitioning(false);
+        return;
+      }
+      // CRITICAL ORDER: slideAnim.setValue FIRST (sync), THEN state setters (batched async).
+      // This guarantees the Animated.Value is already at the off-screen entry position
+      // when React re-renders with the new page — NO 1-frame flash at slide=0.
+      slideAnim.setValue(direction === 'forward' ? 18 : -18);
+      fadeAnim.setValue(0);
       setCurrentPage(newPage);
-      slideAnim.setValue(direction === 'forward' ? 20 : -20);
+      setPageKey(k => k + 1);
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 200,
+          duration: 190,
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 200,
+          duration: 190,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(({ finished: finished2 }) => {
+        if (finished2 && mountedRef.current) setIsTransitioning(false);
+      });
     });
   };
 
@@ -140,8 +182,10 @@ export const StoryComicModal: React.FC<StoryComicModalProps> = ({
   return (
     <View style={styles.overlay}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.cardContainer}>
-          {/* Top Header */}
+        <Animated.View
+          style={[styles.cardContainer, { opacity: shellFadeAnim }]}
+        >
+          {/* Top Header — stays stable across page transitions */}
           <View style={styles.headerRow}>
             <View style={styles.pageBadge}>
               <Text style={styles.pageBadgeText}>📖 The Story of Jenny</Text>
@@ -151,42 +195,49 @@ export const StoryComicModal: React.FC<StoryComicModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Illustrated Comic Card with Transitions */}
-          <Animated.View
-            style={[
-              styles.comicCard,
-              {
+          {/* Comic Card — frame stays stable, only inner CONTENT transitions */}
+          <View style={styles.comicCard}>
+            {/* Animated page content wrapper — this is the only thing that fades + slides */}
+            <Animated.View
+              key={pageKey}
+              style={{
                 opacity: fadeAnim,
                 transform: [{ translateX: slideAnim }],
-              },
-            ]}
-          >
-            {/* Chapter Pill */}
-            <View style={[styles.chapterPill, { backgroundColor: current.highlightColor }]}>
-              <Text style={styles.chapterPillText}>{current.chapter}</Text>
-            </View>
-
-            {/* Illustration Frame */}
-            <View style={styles.imageFrame}>
-              <Image source={current.imageSource} style={styles.comicImage} resizeMode="cover" />
-            </View>
-
-            {/* Comic Caption Headline */}
-            <View style={styles.headlineBox}>
-              <Text style={styles.headlineText}>{current.headline}</Text>
-            </View>
-
-            {/* Jenny Speech Bubble */}
-            <View style={styles.speechBubbleRow}>
-              <JennyAvatar size={48} mood={isLastPage ? 'cheering' : 'friendly'} />
-              <View style={styles.speechBubble}>
-                <View style={styles.bubbleArrow} />
-                <Text style={styles.dialogueText}>"{current.dialogue}"</Text>
+                width: '100%',
+              }}
+            >
+              {/* Chapter Pill */}
+              <View style={[styles.chapterPill, { backgroundColor: current.highlightColor }]}>
+                <Text style={styles.chapterPillText}>{current.chapter}</Text>
               </View>
-            </View>
-          </Animated.View>
 
-          {/* Footer Controls: Pagination Dots & Action Buttons */}
+              {/* Illustration Frame */}
+              <View style={styles.imageFrame}>
+                <Image
+                  key={`story-img-${pageKey}-${currentPage}`}
+                  source={current.imageSource}
+                  style={styles.comicImage}
+                  resizeMode="cover"
+                />
+              </View>
+
+              {/* Comic Caption Headline */}
+              <View style={styles.headlineBox}>
+                <Text style={styles.headlineText}>{current.headline}</Text>
+              </View>
+
+              {/* Jenny Speech Bubble */}
+              <View style={styles.speechBubbleRow}>
+                <JennyAvatar size={48} mood={isLastPage ? 'cheering' : 'friendly'} />
+                <View style={styles.speechBubble}>
+                  <View style={styles.bubbleArrow} />
+                  <Text style={styles.dialogueText}>"{current.dialogue}"</Text>
+                </View>
+              </View>
+            </Animated.View>
+          </View>
+
+          {/* Footer Controls — stays stable across page transitions */}
           <View style={styles.footerContainer}>
             {/* Dots */}
             <View style={styles.dotsRow}>
@@ -203,21 +254,35 @@ export const StoryComicModal: React.FC<StoryComicModalProps> = ({
 
             {/* Buttons */}
             <View style={styles.actionRow}>
-              {currentPage > 0 ? (
-                <TouchableOpacity style={styles.prevButton} onPress={handlePrev} activeOpacity={0.8}>
-                  <Text style={styles.prevButtonText}>⬅️ Back</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.emptyButtonSpace} />
-              )}
+              {/* Always-rendered Back (using opacity to hide on page 0 — avoids mount flicker) */}
+              <TouchableOpacity
+                style={[
+                  styles.prevButton,
+                  currentPage === 0 && styles.prevButtonDisabled,
+                ]}
+                onPress={handlePrev}
+                activeOpacity={currentPage === 0 ? 1 : 0.8}
+                disabled={currentPage === 0 || isTransitioning}
+              >
+                <Text
+                  style={[
+                    styles.prevButtonText,
+                    currentPage === 0 && { opacity: 0 },
+                  ]}
+                >
+                  ⬅️ Back
+                </Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[
                   styles.nextButton,
                   isLastPage ? styles.startButton : { backgroundColor: current.highlightColor },
+                  isTransitioning && { opacity: 0.7 },
                 ]}
                 onPress={handleNext}
                 activeOpacity={0.85}
+                disabled={isTransitioning}
               >
                 <Text style={styles.nextButtonText}>
                   {isLastPage ? 'Start Adventure! 🐾' : 'Next ➡️'}
@@ -225,7 +290,7 @@ export const StoryComicModal: React.FC<StoryComicModalProps> = ({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </Animated.View>
       </SafeAreaView>
     </View>
   );
@@ -299,6 +364,7 @@ const styles = StyleSheet.create({
   comicCard: {
     alignItems: 'center',
     width: '100%',
+    overflow: 'hidden',
   },
   chapterPill: {
     alignSelf: 'flex-start',
@@ -426,6 +492,9 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     borderRadius: 16,
     alignItems: 'center',
+  },
+  prevButtonDisabled: {
+    backgroundColor: '#EAE2D2',
   },
   prevButtonText: {
     fontSize: 14,
