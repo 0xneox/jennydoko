@@ -1,4 +1,4 @@
-export type CellValue = 'empty' | 'puppy' | 'marked';
+export type CellValue = 'empty' | 'puppy' | 'marked' | 'cat';
 
 export interface Cell {
   row: number;
@@ -9,6 +9,11 @@ export interface Cell {
 export interface Region {
   id: number;
   cells: { row: number; col: number }[];
+  /**
+   * Linked beds: the region's cells are intentionally non-contiguous —
+   * two far-apart flower beds that share a single puppy.
+   */
+  linked?: boolean;
 }
 
 export interface Board {
@@ -36,7 +41,9 @@ export type DeductionTechnique =
   | 'column_elimination'
   | 'region_elimination'
   | 'neighbour_elimination'
-  | 'deduction_chain';
+  | 'deduction_chain'
+  /** Hint fallback: a pup placement found by search when deduction stalls. */
+  | 'search_placement';
 
 export interface PuzzleData {
   level: number;
@@ -49,6 +56,18 @@ export interface PuzzleData {
   hasLogicalStart: boolean;
   startingDeduction?: string;
   estimatedSolvingSteps?: number;
+  /**
+   * Puppies required per row, column AND region. Defaults to 1.
+   * 2 = "Twin Puppies" — Star Battle style double-placement boards.
+   */
+  puppiesPerUnit?: number;
+  /**
+   * Grumpy cat cells. A cat can never hold a puppy, and no puppy may sit in
+   * any of the 8 cells touching a cat (cats need personal space too).
+   */
+  cats?: { row: number; col: number }[];
+  /** Procedural boards: the seed trial that produced this puzzle. */
+  seedTrial?: number;
 }
 
 export interface PuzzleMetadata {
@@ -71,19 +90,4 @@ export interface Deduction {
   explanation: string;
   eliminatedCells: { row: number; col: number }[];
   difficultyValue: number;
-}
-
-export interface Hint {
-  level: 1 | 2 | 3 | 4;
-  technique: DeductionTechnique;
-  title?: string;
-  explanation: string;
-  highlightArea: HighlightArea;
-  targetCell?: { row: number; col: number };
-}
-
-export interface HighlightArea {
-  rows: number[];
-  cols: number[];
-  regions: number[];
 }

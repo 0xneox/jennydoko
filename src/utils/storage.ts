@@ -10,17 +10,128 @@ const isWeb = typeof window !== 'undefined' && typeof window.localStorage !== 'u
 let asyncStorageAvailable: boolean = false;
 let memoryStorage: Record<string, string> = {};
 
-// Check if AsyncStorage is available
-const checkAsyncStorage = async () => {
+// Web localStorage can throw (private mode, quota exceeded). Once a web op
+// fails we permanently fall back to in-memory storage for the session so
+// reads stay consistent with earlier writes instead of silently losing them.
+let webStorageBroken = false;
+
+const webGet = (key: string): string | null => {
+  if (webStorageBroken) return memoryStorage[key] ?? null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    webStorageBroken = true;
+    return memoryStorage[key] ?? null;
+  }
+};
+
+const webSet = (key: string, value: string): void => {
+  if (webStorageBroken) {
+    memoryStorage[key] = value;
+    return;
+  }
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    webStorageBroken = true;
+    memoryStorage[key] = value;
+  }
+};
+
+const webRemove = (key: string): void => {
+  if (webStorageBroken) {
+    delete memoryStorage[key];
+    return;
+  }
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    webStorageBroken = true;
+    delete memoryStorage[key];
+  }
+};
+
+// --- Persisted payload validation -------------------------------------------
+// JSON.parse only checks syntax — a corrupt payload (e.g. a string in a numeric
+// field) would otherwise pass and crash downstream math. Each loader validates
+// shape before trusting the data; invalid payloads are discarded to defaults.
+
+const isFiniteNumber = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v);
+
+const parseGameProgress = (raw: string | null): GameProgress | null => {
+  if (raw == null) return null;
+  const parsed: unknown = JSON.parse(raw);
+  if (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    isFiniteNumber((parsed as GameProgress).unlockedLevels) &&
+    isFiniteNumber((parsed as GameProgress).currentLevel)
+  ) {
+    return parsed as GameProgress;
+  }
+  console.warn('Discarding corrupt game progress payload');
+  return null;
+};
+
+const parseDailyChallengeData = (raw: string | null): DailyChallengeData | null => {
+  if (raw == null) return null;
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const d = parsed as Record<string, unknown>;
+  if (!isFiniteNumber(d.currentStreak) || !isFiniteNumber(d.bestStreak)) {
+    console.warn('Discarding corrupt daily challenge payload');
+    return null;
+  }
+  // Numeric fields are load-bearing; optional/list fields are sanitized so a
+  // partially-corrupt payload degrades gracefully instead of being dropped.
+  return {
+    currentStreak: d.currentStreak,
+    bestStreak: d.bestStreak,
+    lastPlayedDate: typeof d.lastPlayedDate === 'string' ? d.lastPlayedDate : '',
+    completedDates: Array.isArray(d.completedDates)
+      ? d.completedDates.filter((x): x is string => typeof x === 'string')
+      : [],
+    rewardsClaimed: Array.isArray(d.rewardsClaimed)
+      ? d.rewardsClaimed.filter(isFiniteNumber)
+      : [],
+  };
+};
+
+const parseNumberArray = (raw: string | null): number[] => {
+  if (raw == null) return [];
+  const parsed: unknown = JSON.parse(raw);
+  if (Array.isArray(parsed) && parsed.every(isFiniteNumber)) {
+    return parsed;
+  }
+  console.warn('Discarding corrupt number-array payload');
+  return [];
+};
+
+// --- Backend selection ------------------------------------------------------
+// AsyncStorage availability is probed asynchronously. Every read/write awaits
+// the probe so a boot-time load (e.g. the game store restoring progress) can
+// never race ahead of it and silently read the empty in-memory fallback.
+
+type AsyncStorageLike = {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+  removeItem: (key: string) => Promise<void>;
+};
+
+let asyncStorage: AsyncStorageLike | null = null;
+
+const checkAsyncStorage = async (): Promise<void> => {
   if (isWeb) {
     asyncStorageAvailable = false;
     return;
   }
   try {
     const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-    const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
+    const AsyncStorage = (AsyncStorageModule.default || AsyncStorageModule) as AsyncStorageLike;
     await AsyncStorage.setItem('__test__', 'test');
     await AsyncStorage.removeItem('__test__');
+    asyncStorage = AsyncStorage;
     asyncStorageAvailable = true;
   } catch (error) {
     console.log('AsyncStorage not available, using in-memory storage');
@@ -28,21 +139,33 @@ const checkAsyncStorage = async () => {
   }
 };
 
-// Initialize storage check
-checkAsyncStorage();
+/** Resolves once the storage backend has been chosen. Exported for tests. */
+export const storageReady: Promise<void> = checkAsyncStorage();
+
+const getItem = async (key: string): Promise<string | null> => {
+  await storageReady;
+  if (isWeb) return webGet(key);
+  if (asyncStorageAvailable && asyncStorage) return asyncStorage.getItem(key);
+  return memoryStorage[key] ?? null;
+};
+
+const setItem = async (key: string, value: string): Promise<void> => {
+  await storageReady;
+  if (isWeb) return webSet(key, value);
+  if (asyncStorageAvailable && asyncStorage) return asyncStorage.setItem(key, value);
+  memoryStorage[key] = value;
+};
+
+const removeItem = async (key: string): Promise<void> => {
+  await storageReady;
+  if (isWeb) return webRemove(key);
+  if (asyncStorageAvailable && asyncStorage) return asyncStorage.removeItem(key);
+  delete memoryStorage[key];
+};
 
 export const saveProgress = async (progress: GameProgress): Promise<void> => {
   try {
-    const jsonValue = JSON.stringify(progress);
-    if (isWeb) {
-      localStorage.setItem(STORAGE_KEY, jsonValue);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      await AsyncStorage.setItem(STORAGE_KEY, jsonValue);
-    } else {
-      memoryStorage[STORAGE_KEY] = jsonValue;
-    }
+    await setItem(STORAGE_KEY, JSON.stringify(progress));
   } catch (error) {
     console.error('Error saving progress:', error);
   }
@@ -50,17 +173,7 @@ export const saveProgress = async (progress: GameProgress): Promise<void> => {
 
 export const loadProgress = async (): Promise<GameProgress | null> => {
   try {
-    let jsonValue: string | null;
-    if (isWeb) {
-      jsonValue = localStorage.getItem(STORAGE_KEY);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      jsonValue = await AsyncStorage.getItem(STORAGE_KEY);
-    } else {
-      jsonValue = memoryStorage[STORAGE_KEY] || null;
-    }
-    return jsonValue != null ? JSON.parse(jsonValue) : null;
+    return parseGameProgress(await getItem(STORAGE_KEY));
   } catch (error) {
     console.error('Error loading progress:', error);
     return null;
@@ -69,15 +182,7 @@ export const loadProgress = async (): Promise<GameProgress | null> => {
 
 export const clearProgress = async (): Promise<void> => {
   try {
-    if (isWeb) {
-      localStorage.removeItem(STORAGE_KEY);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      delete memoryStorage[STORAGE_KEY];
-    }
+    await removeItem(STORAGE_KEY);
   } catch (error) {
     console.error('Error clearing progress:', error);
   }
@@ -85,16 +190,7 @@ export const clearProgress = async (): Promise<void> => {
 
 export const setTutorialSeen = async (seen: boolean): Promise<void> => {
   try {
-    const value = seen ? 'true' : 'false';
-    if (isWeb) {
-      localStorage.setItem(TUTORIAL_KEY, value);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      await AsyncStorage.setItem(TUTORIAL_KEY, value);
-    } else {
-      memoryStorage[TUTORIAL_KEY] = value;
-    }
+    await setItem(TUTORIAL_KEY, seen ? 'true' : 'false');
   } catch (error) {
     console.error('Error setting tutorial seen:', error);
   }
@@ -102,17 +198,7 @@ export const setTutorialSeen = async (seen: boolean): Promise<void> => {
 
 export const getTutorialSeen = async (): Promise<boolean> => {
   try {
-    let value: string | null;
-    if (isWeb) {
-      value = localStorage.getItem(TUTORIAL_KEY);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      value = await AsyncStorage.getItem(TUTORIAL_KEY);
-    } else {
-      value = memoryStorage[TUTORIAL_KEY] || null;
-    }
-    return value === 'true';
+    return (await getItem(TUTORIAL_KEY)) === 'true';
   } catch (error) {
     console.error('Error getting tutorial seen:', error);
     return false;
@@ -123,16 +209,7 @@ const STORY_KEY = '@jenny_story_seen';
 
 export const setStorySeen = async (seen: boolean): Promise<void> => {
   try {
-    const value = seen ? 'true' : 'false';
-    if (isWeb) {
-      localStorage.setItem(STORY_KEY, value);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      await AsyncStorage.setItem(STORY_KEY, value);
-    } else {
-      memoryStorage[STORY_KEY] = value;
-    }
+    await setItem(STORY_KEY, seen ? 'true' : 'false');
   } catch (error) {
     console.error('Error setting story seen:', error);
   }
@@ -140,24 +217,78 @@ export const setStorySeen = async (seen: boolean): Promise<void> => {
 
 export const getStorySeen = async (): Promise<boolean> => {
   try {
-    let value: string | null;
-    if (isWeb) {
-      value = localStorage.getItem(STORY_KEY);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      value = await AsyncStorage.getItem(STORY_KEY);
-    } else {
-      value = memoryStorage[STORY_KEY] || null;
-    }
-    return value === 'true';
+    return (await getItem(STORY_KEY)) === 'true';
   } catch (error) {
     console.error('Error getting story seen:', error);
     return false;
   }
 };
 
+const CHAPTER_STORY_KEY = '@jenny_chapter_stories_seen';
+
+export const setChapterStorySeen = async (chapter: number): Promise<void> => {
+  try {
+    const existing = await getChapterStoriesSeen();
+    if (existing.includes(chapter)) return;
+    await setItem(CHAPTER_STORY_KEY, JSON.stringify([...existing, chapter]));
+  } catch (error) {
+    console.error('Error setting chapter story seen:', error);
+  }
+};
+
+export const getChapterStoriesSeen = async (): Promise<number[]> => {
+  try {
+    const value = await getItem(CHAPTER_STORY_KEY);
+    if (!value) return [];
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((v: unknown) => typeof v === 'number') : [];
+  } catch (error) {
+    console.error('Error getting chapter stories seen:', error);
+    return [];
+  }
+};
+
+export const hasChapterStoryBeenSeen = async (chapter: number): Promise<boolean> => {
+  const seen = await getChapterStoriesSeen();
+  return seen.includes(chapter);
+};
+
 const DAILY_CHALLENGE_KEY = '@jenny_daily_challenge';
+
+const MECHANIC_INTRO_KEY = '@jenny_mechanic_intros_seen';
+
+export type MechanicIntroKey = 'cats' | 'linked' | 'twin';
+
+export const setMechanicIntroSeen = async (key: MechanicIntroKey): Promise<void> => {
+  try {
+    const existing = await getMechanicIntrosSeen();
+    if (existing.includes(key)) return;
+    await setItem(MECHANIC_INTRO_KEY, JSON.stringify([...existing, key]));
+  } catch (error) {
+    console.error('Error setting mechanic intro seen:', error);
+  }
+};
+
+export const getMechanicIntrosSeen = async (): Promise<MechanicIntroKey[]> => {
+  try {
+    const value = await getItem(MECHANIC_INTRO_KEY);
+    if (!value) return [];
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    const validKeys: MechanicIntroKey[] = ['cats', 'linked', 'twin'];
+    return parsed.filter((v: unknown): v is MechanicIntroKey =>
+      typeof v === 'string' && validKeys.includes(v as MechanicIntroKey)
+    );
+  } catch (error) {
+    console.error('Error getting mechanic intros seen:', error);
+    return [];
+  }
+};
+
+export const hasMechanicIntroBeenSeen = async (key: MechanicIntroKey): Promise<boolean> => {
+  const seen = await getMechanicIntrosSeen();
+  return seen.includes(key);
+};
 
 export interface DailyChallengeData {
   currentStreak: number;
@@ -169,16 +300,7 @@ export interface DailyChallengeData {
 
 export const saveDailyChallengeData = async (data: DailyChallengeData): Promise<void> => {
   try {
-    const jsonValue = JSON.stringify(data);
-    if (isWeb) {
-      localStorage.setItem(DAILY_CHALLENGE_KEY, jsonValue);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      await AsyncStorage.setItem(DAILY_CHALLENGE_KEY, jsonValue);
-    } else {
-      memoryStorage[DAILY_CHALLENGE_KEY] = jsonValue;
-    }
+    await setItem(DAILY_CHALLENGE_KEY, JSON.stringify(data));
   } catch (error) {
     console.error('Error saving daily challenge data:', error);
   }
@@ -186,19 +308,44 @@ export const saveDailyChallengeData = async (data: DailyChallengeData): Promise<
 
 export const loadDailyChallengeData = async (): Promise<DailyChallengeData | null> => {
   try {
-    let jsonValue: string | null;
-    if (isWeb) {
-      jsonValue = localStorage.getItem(DAILY_CHALLENGE_KEY);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      jsonValue = await AsyncStorage.getItem(DAILY_CHALLENGE_KEY);
-    } else {
-      jsonValue = memoryStorage[DAILY_CHALLENGE_KEY] || null;
-    }
-    return jsonValue != null ? JSON.parse(jsonValue) : null;
+    return parseDailyChallengeData(await getItem(DAILY_CHALLENGE_KEY));
   } catch (error) {
     console.error('Error loading daily challenge data:', error);
+    return null;
+  }
+};
+
+const AUDIO_PREFS_KEY = '@jenny_audio_prefs';
+
+export interface AudioPrefs {
+  sfxEnabled: boolean;
+  bgmEnabled: boolean;
+}
+
+export const saveAudioPrefs = async (prefs: AudioPrefs): Promise<void> => {
+  try {
+    await setItem(AUDIO_PREFS_KEY, JSON.stringify(prefs));
+  } catch (error) {
+    console.error('Error saving audio prefs:', error);
+  }
+};
+
+export const loadAudioPrefs = async (): Promise<AudioPrefs | null> => {
+  try {
+    const jsonValue = await getItem(AUDIO_PREFS_KEY);
+    if (jsonValue == null) return null;
+    const parsed: unknown = JSON.parse(jsonValue);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as AudioPrefs).sfxEnabled === 'boolean' &&
+      typeof (parsed as AudioPrefs).bgmEnabled === 'boolean'
+    ) {
+      return parsed as AudioPrefs;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error loading audio prefs:', error);
     return null;
   }
 };
@@ -213,6 +360,8 @@ export interface PuppyMilestone {
   icon: string;
   quote: string;
   color: string;
+  /** Optional "New Power Unlocked!" ceremony text for milestone levels. */
+  powerUnlocked?: string;
 }
 
 export const PUPPY_MILESTONES: PuppyMilestone[] = [
@@ -242,15 +391,37 @@ export const PUPPY_MILESTONES: PuppyMilestone[] = [
     icon: '🦊',
     quote: 'Calm, patient, and wise. Sees the entire garden in harmony before taking a single step.',
     color: '#D35400',
+    powerUnlocked: 'Grumpy Cats! 😾 A new mechanic awaits in Chapter 11!',
   },
   {
-    chapter: 25,
-    level: 500,
+    chapter: 20,
+    level: 400,
     breedName: 'Highland Terrier Scout',
-    badgeTitle: 'Trail Master Pioneer ⛰️',
+    badgeTitle: 'Linked Bed Pioneer 🔗',
     icon: '🐶',
-    quote: 'Fearless and spirited! Conquered 500 gardens without breaking a sweat.',
+    quote: 'Fearless and spirited! Mastered the magic of linked beds across distant gardens!',
     color: '#8E44AD',
+    powerUnlocked: 'Linked Beds! 🔗 Two flower beds can share one puppy!',
+  },
+  {
+    chapter: 30,
+    level: 600,
+    breedName: 'Combo Guardian Hound',
+    badgeTitle: 'Combo Master 🧩',
+    icon: '🐺',
+    quote: 'Wise and watchful! Handles cats AND linked beds together like a true expert!',
+    color: '#1565C0',
+    powerUnlocked: 'Combo Gardens! 😾🔗 Cats and linked beds together!',
+  },
+  {
+    chapter: 40,
+    level: 800,
+    breedName: 'Twin Pup Champion',
+    badgeTitle: 'Twin Puppy Master 👯',
+    icon: '🐾',
+    quote: 'Double the pups, double the fun! Mastered the art of twin puppy placement!',
+    color: '#3949AB',
+    powerUnlocked: 'Twin Puppies! 👯 TWO pups per row, column, and patch!',
   },
   {
     chapter: 50,
@@ -260,21 +431,13 @@ export const PUPPY_MILESTONES: PuppyMilestone[] = [
     icon: '👑',
     quote: 'The ultimate garden protector. All 1000 meadows are now peaceful and safe under her watch!',
     color: '#27AE60',
+    powerUnlocked: 'Grand Championship! 🏆 Every mechanic at once — you\'re a legend!',
   },
 ];
 
 export const saveClaimedAdoptions = async (claimedLevels: number[]): Promise<void> => {
   try {
-    const jsonValue = JSON.stringify(claimedLevels);
-    if (isWeb) {
-      localStorage.setItem(ADOPTIONS_KEY, jsonValue);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      await AsyncStorage.setItem(ADOPTIONS_KEY, jsonValue);
-    } else {
-      memoryStorage[ADOPTIONS_KEY] = jsonValue;
-    }
+    await setItem(ADOPTIONS_KEY, JSON.stringify(claimedLevels));
   } catch (error) {
     console.error('Error saving claimed adoptions:', error);
   }
@@ -282,17 +445,7 @@ export const saveClaimedAdoptions = async (claimedLevels: number[]): Promise<voi
 
 export const loadClaimedAdoptions = async (): Promise<number[]> => {
   try {
-    let jsonValue: string | null;
-    if (isWeb) {
-      jsonValue = localStorage.getItem(ADOPTIONS_KEY);
-    } else if (asyncStorageAvailable) {
-      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
-      const AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
-      jsonValue = await AsyncStorage.getItem(ADOPTIONS_KEY);
-    } else {
-      jsonValue = memoryStorage[ADOPTIONS_KEY] || null;
-    }
-    return jsonValue != null ? JSON.parse(jsonValue) : [];
+    return parseNumberArray(await getItem(ADOPTIONS_KEY));
   } catch (error) {
     console.error('Error loading claimed adoptions:', error);
     return [];

@@ -24,6 +24,17 @@ import {
   getFormattedTodayDisplay,
   DailyChallengeState,
 } from '../utils/dailyChallenge';
+import { CandyBackground } from '../components/candy/CandyBackground';
+import { CandyButton } from '../components/candy/CandyButton';
+import { CandyPanel } from '../components/candy/CandyPanel';
+import {
+  APP_NAME,
+  APP_TAGLINE,
+  CANDY_GOLD,
+  CANDY_SURFACE,
+  CANDY_TEXT,
+  CANDY_METRICS,
+} from '../utils/theme';
 
 export const HomeScreen: React.FC = () => {
   const { currentLevel, unlockedLevels, startLevel, startDailyChallenge, setActiveScreen } = useGameStore();
@@ -165,9 +176,13 @@ export const HomeScreen: React.FC = () => {
     ? Object.keys(stats.levelStats).filter(k => (stats.levelStats[Number(k)]?.completions || 0) > 0).length
     : Math.max(0, currentLevel - 1);
 
-  const totalHints = stats
-    ? Object.values(stats.levelStats).reduce((acc, curr) => acc + (curr.hintsUsed || 0), 0)
-    : 0;
+  const totalPlayTimeFormatted = stats
+    ? (() => {
+        const totalMinutes = Math.floor(stats.totalPlayTime / 60);
+        if (totalMinutes < 60) return `${totalMinutes}m`;
+        return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
+      })()
+    : '0m';
 
   const totalStars = solvedCount;
 
@@ -185,11 +200,14 @@ export const HomeScreen: React.FC = () => {
 
   if (!storyChecked) {
     return (
-      <SafeAreaView style={styles.safeArea} />
+      <CandyBackground>
+        <SafeAreaView style={styles.safeArea} />
+      </CandyBackground>
     );
   }
 
   return (
+    <CandyBackground>
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
@@ -207,30 +225,33 @@ export const HomeScreen: React.FC = () => {
           {/* Top Bar with Settings */}
           <View style={styles.topBar}>
             <View style={styles.appPill}>
-              <Text style={styles.appPillText}>🐾 Jenny's Cozy World</Text>
+              <Text style={styles.appPillText}>🐾 {APP_NAME}</Text>
             </View>
-            <TouchableOpacity
-              style={styles.settingsButton}
+            <CandyButton
+              skin="grape"
+              size="sm"
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 soundManager.play('button');
                 setShowSettings(true);
               }}
-              activeOpacity={0.7}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.settingsButton}
             >
               <Text style={styles.settingsIcon}>⚙️</Text>
-            </TouchableOpacity>
+            </CandyButton>
           </View>
 
           {/* Title & Branding */}
           <View style={styles.titleContainer}>
-            <Text style={styles.mainTitle}>Jenny's Puppies</Text>
-            <Text style={styles.subtitle}>A Cozy Logic Adventure</Text>
+            <View style={styles.logoRow}>
+              <Text style={[styles.logoWord, styles.logoWordJenny]}>Jenny</Text>
+              <Text style={[styles.logoWord, styles.logoWordDoko]}>Doko</Text>
+            </View>
+            <Text style={styles.subtitle}>{APP_TAGLINE}</Text>
           </View>
 
           {/* Mascot Hero Card featuring Jenny & Pups */}
-          <View style={styles.mascotCard}>
+          <CandyPanel style={styles.mascotCard} contentStyle={styles.mascotCardFace}>
             <Animated.View
               style={[
                 styles.mascotAvatarWrapper,
@@ -249,14 +270,15 @@ export const HomeScreen: React.FC = () => {
                 Can you help Jenny ensure every puppy gets their own sunny spot?
               </Text>
             </View>
-          </View>
+          </CandyPanel>
 
           {/* Primary Actions */}
           <View style={styles.actionGroup}>
-            <TouchableOpacity
-              style={styles.continueButton}
+            <CandyButton
+              block
+              size="lg"
+              skin="green"
               onPress={handleContinue}
-              activeOpacity={0.85}
             >
               <View style={styles.continueContent}>
                 <View style={styles.continueIconCircle}>
@@ -283,17 +305,16 @@ export const HomeScreen: React.FC = () => {
                   </View>
                 </View>
               </View>
-            </TouchableOpacity>
+            </CandyButton>
 
             {/* Daily Challenge Featured Card */}
-            <TouchableOpacity
-              style={[
-                styles.dailyCard,
-                dailyState?.isCompletedToday && styles.dailyCardCompleted,
-              ]}
-              onPress={handlePlayDaily}
-              activeOpacity={0.88}
-            >
+            <TouchableOpacity onPress={handlePlayDaily} activeOpacity={0.88}>
+              <CandyPanel
+                contentStyle={[
+                  styles.dailyCardFace,
+                  dailyState?.isCompletedToday && styles.dailyCardFaceCompleted,
+                ]}
+              >
               <View style={styles.dailyCardHeader}>
                 <View style={styles.dailyHeaderLeft}>
                   <Text style={styles.dailyCalendarEmoji}>📅</Text>
@@ -337,39 +358,40 @@ export const HomeScreen: React.FC = () => {
                   </Text>
                 </View>
               </View>
+              </CandyPanel>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.storyButton}
+            <CandyButton
+              block
+              skin="orange"
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 soundManager.play('button');
                 setShowStory(true);
               }}
-              activeOpacity={0.8}
             >
-              <Text style={styles.storyButtonIcon}>📖</Text>
-              <Text style={styles.storyButtonText}>The Story of Jenny</Text>
-              <View style={styles.storyBadge}>
-                <Text style={styles.storyBadgeText}>Comic</Text>
+              <View style={styles.rowButtonContent}>
+                <Text style={styles.storyButtonIcon}>📖</Text>
+                <Text style={styles.rowButtonText}>The Story of Jenny</Text>
+                <View style={styles.rowButtonBadge}>
+                  <Text style={styles.rowButtonBadgeText}>Comic</Text>
+                </View>
               </View>
-            </TouchableOpacity>
+            </CandyButton>
 
-            <TouchableOpacity
-              style={styles.mapButton}
-              onPress={handleOpenMap}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.mapButtonIcon}>🗺️</Text>
-              <Text style={styles.mapButtonText}>Chapters & Levels</Text>
-              <View style={styles.mapBadge}>
-                <Text style={styles.mapBadgeText}>{unlockedLevels} / 1000</Text>
+            <CandyButton block skin="blue" onPress={handleOpenMap}>
+              <View style={styles.rowButtonContent}>
+                <Text style={styles.storyButtonIcon}>🗺️</Text>
+                <Text style={styles.rowButtonText}>Chapters & Levels</Text>
+                <View style={styles.rowButtonBadge}>
+                  <Text style={styles.rowButtonBadgeText}>{unlockedLevels} / 1000</Text>
+                </View>
               </View>
-            </TouchableOpacity>
+            </CandyButton>
           </View>
 
           {/* Player Stats Card */}
-          <View style={styles.statsCard}>
+          <CandyPanel style={styles.statsCard} contentStyle={styles.statsCardFace}>
             <Text style={styles.statsCardTitle}>🏆 Your Journey Progress</Text>
             <View style={styles.statsGrid}>
               <View style={styles.statItem}>
@@ -389,17 +411,13 @@ export const HomeScreen: React.FC = () => {
               <View style={styles.statDivider} />
 
               <View style={styles.statItem}>
-                <Text style={styles.statEmoji}>💡</Text>
-                <Text style={styles.statNumber}>{totalHints}</Text>
-                <Text style={styles.statLabel}>Hints Used</Text>
+                <Text style={styles.statEmoji}>⏱️</Text>
+                <Text style={styles.statNumber}>{totalPlayTimeFormatted}</Text>
+                <Text style={styles.statLabel}>Time Played</Text>
               </View>
             </View>
-          </View>
+          </CandyPanel>
 
-          {/* Footer note */}
-          <Text style={styles.footerText}>
-            1000 Handcrafted & Procedural Logic Puzzles across 50 Thematic Chapters
-          </Text>
         </Animated.View>
       </ScrollView>
 
@@ -420,13 +438,13 @@ export const HomeScreen: React.FC = () => {
         }}
       />
     </SafeAreaView>
+    </CandyBackground>
   );
 };
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FBF9F5',
   },
   scrollContainer: {
     flexGrow: 1,
@@ -450,75 +468,72 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   appPill: {
-    backgroundColor: '#EFEAE1',
+    backgroundColor: 'rgba(20, 10, 44, 0.45)',
+    borderWidth: 1.5,
+    borderColor: CANDY_SURFACE.border,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,
   },
   appPillText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#6B5E4F',
+    fontWeight: '800',
+    color: CANDY_TEXT.onDarkSoft,
   },
   settingsButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E8E2D6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    minWidth: 42,
   },
   settingsIcon: {
-    fontSize: 20,
+    fontSize: 18,
   },
   titleContainer: {
     alignItems: 'center',
     marginBottom: 20,
   },
-  mainTitle: {
-    fontSize: 34,
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 6,
+  },
+  logoWord: {
+    fontSize: 52,
     fontWeight: '900',
-    color: '#2C3E50',
-    letterSpacing: -0.5,
-    textAlign: 'center',
+    letterSpacing: 1,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 2,
+  },
+  logoWordJenny: {
+    color: CANDY_GOLD.base,
+  },
+  logoWordDoko: {
+    color: '#7FD4FF',
   },
   subtitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#8A7A68',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkSoft,
     marginTop: 4,
     textAlign: 'center',
   },
+
+  /* Mascot Hero Card */
   mascotCard: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 22,
+    marginBottom: 24,
+  },
+  mascotCardFace: {
+    padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#EFE7DA',
-    shadowColor: '#7A6B53',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 18,
-    elevation: 5,
-    marginBottom: 24,
   },
   mascotAvatarWrapper: {
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: '#FFF7E6',
+    backgroundColor: 'rgba(20, 10, 44, 0.5)',
     borderWidth: 3,
-    borderColor: '#FFD79A',
+    borderColor: CANDY_GOLD.base,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -526,54 +541,45 @@ const styles = StyleSheet.create({
   },
   mascotGlow: {
     position: 'absolute',
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: 'rgba(255, 183, 77, 0.2)',
-  },
-  mascotEmoji: {
-    fontSize: 42,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'rgba(255, 201, 60, 0.28)',
   },
   mascotSpeechBubble: {
     flex: 1,
   },
   mascotQuote: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#2C3E50',
+    fontWeight: '900',
+    color: CANDY_TEXT.onDark,
     marginBottom: 4,
   },
   mascotSubquote: {
     fontSize: 13,
-    fontWeight: '500',
-    color: '#8A7A68',
+    fontWeight: '600',
+    color: CANDY_TEXT.onDarkSoft,
     lineHeight: 18,
   },
+
+  /* Primary Actions */
   actionGroup: {
     width: '100%',
-    gap: 12,
+    gap: 14,
     marginBottom: 24,
-  },
-  continueButton: {
-    width: '100%',
-    backgroundColor: '#27AE60',
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: '#27AE60',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
   },
   continueContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    width: '100%',
   },
   continueIconCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.45)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -586,9 +592,12 @@ const styles = StyleSheet.create({
   },
   continueMainText: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: -0.2,
+    letterSpacing: 0.2,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 0,
   },
   continueSubRow: {
     flexDirection: 'row',
@@ -598,113 +607,69 @@ const styles = StyleSheet.create({
   },
   continueChapterText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#E8F5E9',
+    fontWeight: '700',
+    color: '#DFFFE8',
   },
   difficultyBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   difficultyBadgeText: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#FFFFFF',
   },
-  storyButton: {
-    width: '100%',
-    backgroundColor: '#FFFBF2',
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+
+  /* Shared row-style candy buttons (story / map) */
+  rowButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#F5DCB7',
-    shadowColor: '#E67E22',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 2,
+    width: '100%',
   },
   storyButtonIcon: {
     fontSize: 22,
     marginRight: 12,
   },
-  storyButtonText: {
+  rowButtonText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#6E4822',
+    fontWeight: '900',
+    color: '#FFFFFF',
     flex: 1,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 0,
   },
-  storyBadge: {
-    backgroundColor: '#FFE8C8',
+  rowButtonBadge: {
+    backgroundColor: 'rgba(20, 10, 44, 0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  storyBadgeText: {
+  rowButtonBadgeText: {
     fontSize: 12,
-    fontWeight: '800',
-    color: '#D35400',
+    fontWeight: '900',
+    color: '#FFFFFF',
   },
-  mapButton: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E2D9C8',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  mapButtonIcon: {
-    fontSize: 22,
-    marginRight: 12,
-  },
-  mapButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#34495E',
-    flex: 1,
-  },
-  mapBadge: {
-    backgroundColor: '#EBF3FB',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  mapBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#2980B9',
-  },
+
+  /* Player Stats Card */
   statsCard: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#EFE7DA',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
     marginBottom: 20,
+  },
+  statsCardFace: {
+    padding: 18,
   },
   statsCardTitle: {
     fontSize: 14,
-    fontWeight: '800',
-    color: '#8A7A68',
+    fontWeight: '900',
+    color: CANDY_GOLD.base,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
     marginBottom: 14,
     textAlign: 'center',
   },
@@ -722,46 +687,32 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   statNumber: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '900',
-    color: '#2C3E50',
+    color: CANDY_TEXT.onDark,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 0,
   },
   statLabel: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#95A5A6',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkMuted,
     marginTop: 2,
   },
   statDivider: {
     width: 1,
     height: 36,
-    backgroundColor: '#EFE7DA',
+    backgroundColor: CANDY_SURFACE.border,
   },
-  footerText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#B5A898',
-    textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 6,
-  },
-  /* Daily Challenge Card Styles */
-  dailyCard: {
-    width: '100%',
-    backgroundColor: '#FFFDF9',
-    borderRadius: 20,
+
+  /* Daily Challenge Card */
+  dailyCardFace: {
     padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#FFE0B2',
-    shadowColor: '#E65100',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 3,
+    borderColor: CANDY_GOLD.base,
   },
-  dailyCardCompleted: {
-    borderColor: '#C8E6C9',
-    backgroundColor: '#F9FDF9',
+  dailyCardFaceCompleted: {
+    borderColor: '#7FE9A8',
   },
   dailyCardHeader: {
     flexDirection: 'row',
@@ -778,25 +729,25 @@ const styles = StyleSheet.create({
   },
   dailyCardTitle: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#2C3E50',
-    letterSpacing: -0.2,
+    fontWeight: '900',
+    color: CANDY_TEXT.onDark,
+    letterSpacing: 0.1,
   },
   dailyCardDate: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#8A7A68',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkSoft,
     marginTop: 1,
   },
   dailyStreakPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF3E0',
+    backgroundColor: 'rgba(20, 10, 44, 0.45)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FFE0B2',
+    borderWidth: 1.5,
+    borderColor: CANDY_GOLD.dark,
     gap: 4,
   },
   dailyStreakFire: {
@@ -805,16 +756,16 @@ const styles = StyleSheet.create({
   dailyStreakNumber: {
     fontSize: 14,
     fontWeight: '900',
-    color: '#E65100',
+    color: CANDY_GOLD.light,
   },
   dailyStreakLabel: {
     fontSize: 11,
-    fontWeight: '700',
-    color: '#E65100',
+    fontWeight: '800',
+    color: CANDY_GOLD.base,
   },
   dailyCardDivider: {
     height: 1,
-    backgroundColor: '#F5EBDD',
+    backgroundColor: CANDY_SURFACE.border,
     marginVertical: 12,
   },
   dailyCardBottom: {
@@ -827,34 +778,40 @@ const styles = StyleSheet.create({
   },
   dailyCountdownLabel: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#9E9E9E',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkMuted,
   },
   dailyCountdownTime: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#5D4037',
+    fontSize: 14,
+    fontWeight: '900',
+    color: CANDY_TEXT.onDark,
     fontVariant: ['tabular-nums'],
     marginTop: 2,
   },
   dailyPlayBtn: {
-    backgroundColor: '#FF9800',
+    backgroundColor: '#F79000',
+    borderWidth: 1.5,
+    borderColor: '#B25400',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 14,
-    shadowColor: '#FF9800',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    paddingVertical: 9,
+    borderRadius: CANDY_METRICS.radiusChip,
+    shadowColor: '#B25400',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 4,
   },
   dailyPlayBtnDone: {
-    backgroundColor: '#26A69A',
-    shadowColor: '#26A69A',
+    backgroundColor: '#1FA98A',
+    borderColor: '#0F6B57',
+    shadowColor: '#0F6B57',
   },
   dailyPlayBtnText: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#FFFFFF',
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
 });

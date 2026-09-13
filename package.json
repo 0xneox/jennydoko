@@ -1,5 +1,5 @@
 {
-  "name": "jenny",
+  "name": "jennydoko",
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
@@ -8,7 +8,8 @@
     "expo-audio": "~57.0.4",
     "expo-av": "^16.0.8",
     "expo-haptics": "~57.0.2",
-    "expo-router": "~57.0.19",
+    "expo-linear-gradient": "~57.0.2",
+    "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.3",

@@ -5,13 +5,17 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
+  Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { soundManager } from '../utils/soundManager';
 import { setTutorialSeen } from '../utils/storage';
 import { JennyAvatar } from './assets/JennyAvatar';
 import { PuppySprite } from './assets/PuppySprite';
-import { ChalkMarkSprite } from './assets/ChalkMarkSprite';
+import { CandyButton } from './candy/CandyButton';
+import { CANDY_GOLD, CANDY_SURFACE, CANDY_TEXT } from '../utils/theme';
+
+const PAW_IMAGE = require('../../assets/paw.png');
 
 interface InteractiveTutorialProps {
   visible: boolean;
@@ -211,7 +215,7 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
                 {step === 1 &&
                   "Notice this small single-cell patch? A puppy must go right here! Tap the spotlight to place our first pup."}
                 {step === 2 &&
-                  "See those ✕ marks around the puppy? No other dog can touch this pup, even diagonally. They love their naps undisturbed!"}
+                  "See those paw marks around the puppy? No other dog can touch this pup, even diagonally. They love their naps undisturbed!"}
                 {step === 3 &&
                   "Every row, column, and color patch will have exactly 1 happy puppy. You're ready to solve Level 1!"}
               </Text>
@@ -257,21 +261,21 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
                 <View style={styles.miniSpaceGrid}>
                   {/* Visual 3x3 showing puppy in center and ✕ all around */}
                   <View style={styles.miniRow}>
-                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniCrossCell}><Image source={PAW_IMAGE} style={styles.miniPaw} resizeMode="contain" /></View>
+                    <View style={styles.miniCrossCell}><Image source={PAW_IMAGE} style={styles.miniPaw} resizeMode="contain" /></View>
+                    <View style={styles.miniCrossCell}><Image source={PAW_IMAGE} style={styles.miniPaw} resizeMode="contain" /></View>
                   </View>
                   <View style={styles.miniRow}>
-                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniCrossCell}><Image source={PAW_IMAGE} style={styles.miniPaw} resizeMode="contain" /></View>
                     <View style={styles.miniPuppyCenter}>
                       <PuppySprite size={32} breed="corgi" />
                     </View>
-                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniCrossCell}><Image source={PAW_IMAGE} style={styles.miniPaw} resizeMode="contain" /></View>
                   </View>
                   <View style={styles.miniRow}>
-                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
-                    <View style={styles.miniCrossCell}><ChalkMarkSprite size={18} /></View>
+                    <View style={styles.miniCrossCell}><Image source={PAW_IMAGE} style={styles.miniPaw} resizeMode="contain" /></View>
+                    <View style={styles.miniCrossCell}><Image source={PAW_IMAGE} style={styles.miniPaw} resizeMode="contain" /></View>
+                    <View style={styles.miniCrossCell}><Image source={PAW_IMAGE} style={styles.miniPaw} resizeMode="contain" /></View>
                   </View>
                 </View>
 
@@ -279,13 +283,13 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
                   🛡️ 8-directional personal space buffer is now marked!
                 </Text>
 
-                <TouchableOpacity
-                  style={styles.actionButton}
+                <CandyButton
+                  block
+                  skin="blue"
+                  label="Next: Row & Column Rule ➡️"
                   onPress={() => advanceToStep(3)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.actionButtonText}>Next: Row & Column Rule ➡️</Text>
-                </TouchableOpacity>
+                  style={styles.actionButtonWrap}
+                />
               </View>
             )}
 
@@ -308,13 +312,14 @@ export const InteractiveTutorial: React.FC<InteractiveTutorialProps> = ({
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.finishButton]}
+                <CandyButton
+                  block
+                  size="lg"
+                  skin="green"
+                  label="Let's Solve Level 1! 🐕"
                   onPress={handleFinish}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.actionButtonText}>Let's Solve Level 1! 🐕</Text>
-                </TouchableOpacity>
+                  style={styles.actionButtonWrap}
+                />
               </View>
             )}
           </View>
@@ -340,15 +345,15 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     maxWidth: 390,
-    backgroundColor: '#FAF7F2',
+    backgroundColor: CANDY_SURFACE.top,
     borderRadius: 24,
     padding: 20,
     borderWidth: 2,
-    borderColor: '#EFE7DA',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    borderColor: CANDY_GOLD.base,
+    shadowColor: '#0E0620',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.55,
+    shadowRadius: 22,
     elevation: 14,
   },
   header: {
@@ -358,14 +363,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   stepBadge: {
-    backgroundColor: '#27AE60',
+    backgroundColor: '#25B84E',
+    borderWidth: 1.5,
+    borderColor: '#0F6B2B',
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 14,
   },
   stepBadgeText: {
     color: '#FFFFFF',
-    fontWeight: '800',
+    fontWeight: '900',
     fontSize: 12,
     letterSpacing: 0.3,
   },
@@ -373,28 +380,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: 'rgba(20, 10, 44, 0.45)',
+    borderWidth: 1,
+    borderColor: CANDY_SURFACE.border,
   },
   skipText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#8A7A68',
+    fontWeight: '800',
+    color: CANDY_TEXT.onDarkSoft,
   },
   dialogueCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(20, 10, 44, 0.42)',
     borderRadius: 18,
     padding: 14,
-    borderWidth: 1,
-    borderColor: '#EAE1D2',
+    borderWidth: 1.5,
+    borderColor: CANDY_SURFACE.border,
     gap: 12,
     alignItems: 'flex-start',
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
   },
   avatarWrapper: {
     marginTop: 2,
@@ -404,30 +408,31 @@ const styles = StyleSheet.create({
   },
   speakerName: {
     fontSize: 12,
-    fontWeight: '800',
-    color: '#27AE60',
+    fontWeight: '900',
+    color: CANDY_GOLD.base,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 2,
   },
   ruleTitle: {
     fontSize: 15,
-    fontWeight: '800',
-    color: '#2C3E50',
+    fontWeight: '900',
+    color: CANDY_TEXT.onDark,
     lineHeight: 20,
     marginBottom: 6,
   },
   ruleExplanation: {
     fontSize: 12.5,
-    color: '#655745',
+    fontWeight: '600',
+    color: CANDY_TEXT.onDarkSoft,
     lineHeight: 17,
   },
   spotlightCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(20, 10, 44, 0.42)',
     borderRadius: 18,
     padding: 16,
     borderWidth: 1.5,
-    borderColor: '#EFE7DA',
+    borderColor: CANDY_SURFACE.border,
     alignItems: 'center',
   },
   spotlightInteractiveArea: {
@@ -436,28 +441,29 @@ const styles = StyleSheet.create({
   },
   interactiveInstruction: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#7D6A56',
+    fontWeight: '800',
+    color: CANDY_TEXT.onDarkSoft,
     marginBottom: 14,
   },
   targetSpotlightCell: {
     width: 80,
     height: 80,
-    borderRadius: 20,
-    backgroundColor: '#FFF7D6',
+    borderRadius: 22,
+    backgroundColor: '#F5B324',
     borderWidth: 3.5,
-    borderColor: '#F39C12',
+    borderColor: CANDY_GOLD.light,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#F39C12',
+    shadowColor: CANDY_GOLD.base,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOpacity: 0.9,
+    shadowRadius: 14,
+    elevation: 10,
   },
   targetSpotlightCellTapped: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#27AE60',
+    backgroundColor: '#25B84E',
+    borderColor: '#8CFFA8',
+    shadowColor: '#25B84E',
   },
   targetInnerGlow: {
     alignItems: 'center',
@@ -469,21 +475,21 @@ const styles = StyleSheet.create({
   targetLabel: {
     fontSize: 11,
     fontWeight: '900',
-    color: '#D35400',
+    color: '#4A3000',
     letterSpacing: 0.5,
   },
   successNote: {
     marginTop: 12,
     fontSize: 13,
-    fontWeight: '800',
-    color: '#27AE60',
+    fontWeight: '900',
+    color: '#8CFFA8',
   },
   miniSpaceGrid: {
-    backgroundColor: '#F7F4EE',
+    backgroundColor: 'rgba(20, 10, 44, 0.55)',
     padding: 10,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: '#E2D9CA',
+    borderColor: CANDY_SURFACE.bevel,
     marginBottom: 12,
   },
   miniRow: {
@@ -493,61 +499,47 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     margin: 2,
-    backgroundColor: 'rgba(231, 76, 60, 0.08)',
-    borderRadius: 8,
+    backgroundColor: 'rgba(255, 122, 138, 0.18)',
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(231, 76, 60, 0.25)',
+    borderColor: 'rgba(255, 122, 138, 0.45)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  miniPaw: {
+    width: 20,
+    height: 20,
+    opacity: 0.85,
   },
   miniPuppyCenter: {
     width: 38,
     height: 38,
     margin: 2,
-    backgroundColor: '#FFF7D6',
-    borderRadius: 8,
+    backgroundColor: '#F5B324',
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#F39C12',
+    borderColor: CANDY_GOLD.light,
     alignItems: 'center',
     justifyContent: 'center',
   },
   spaceNote: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#7D6A56',
+    color: CANDY_TEXT.onDarkSoft,
     textAlign: 'center',
     marginBottom: 14,
     lineHeight: 16,
   },
-  actionButton: {
+  actionButtonWrap: {
     width: '100%',
-    backgroundColor: '#2980B9',
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#2980B9',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  finishButton: {
-    backgroundColor: '#27AE60',
-    shadowColor: '#27AE60',
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 14,
-    letterSpacing: 0.3,
   },
   ruleSummaryCard: {
     width: '100%',
-    backgroundColor: '#FDFBF7',
+    backgroundColor: 'rgba(20, 10, 44, 0.42)',
     borderRadius: 14,
     padding: 12,
-    borderWidth: 1,
-    borderColor: '#EBE2D3',
+    borderWidth: 1.5,
+    borderColor: CANDY_SURFACE.border,
     marginBottom: 14,
     gap: 8,
   },
@@ -561,11 +553,11 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#2C3E50',
+    fontWeight: '800',
+    color: CANDY_TEXT.onDark,
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: '#EFE7DB',
+    backgroundColor: CANDY_SURFACE.border,
   },
 });

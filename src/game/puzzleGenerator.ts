@@ -16,7 +16,7 @@ export class PuzzleGenerator {
     let bestScore = -1;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const puzzle = this.attemptPuzzleGeneration(gridSize, targetDifficulty, levelNumber);
+      const puzzle = this.attemptPuzzleGeneration(gridSize, targetDifficulty, levelNumber, attempt);
       if (puzzle) {
         const score = this.evaluatePuzzleQuality(puzzle);
         if (score > bestScore) {
@@ -32,10 +32,11 @@ export class PuzzleGenerator {
   private static attemptPuzzleGeneration(
     gridSize: number,
     targetDifficulty: DifficultyLevel,
-    levelNumber: number
+    levelNumber: number,
+    attempt: number
   ): PuzzleData | null {
     // Generate regions
-    const regions = this.generateRegions(gridSize);
+    const regions = this.generateRegions(gridSize, levelNumber * 7919 + attempt * 31);
 
     // Generate a valid solution
     const solution = this.generateValidSolution(gridSize, regions);
@@ -77,13 +78,12 @@ export class PuzzleGenerator {
     return puzzle;
   }
 
-  private static generateRegions(gridSize: number): Region[] {
+  private static generateRegions(gridSize: number, seed: number): Region[] {
     const regions: Region[] = [];
     const cellAssignments = new Map<string, number>();
 
     // Create a simple region generation strategy
     // For now, use a deterministic but varied approach
-    const seed = Date.now();
     let seedValue = seed;
 
     const random = () => {

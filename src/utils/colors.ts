@@ -1,7 +1,8 @@
 /**
- * Nordic / Cozy Pastel Palette System
- * Harmonious, eye-friendly, low-eye-strain colors with high accessibility,
- * distinct luminance separation, and colorblind-safe contrast.
+ * Rainbow Candy Palette System
+ * Glossy, vibrant, candy-crush-style colors flowing from warm (top-left)
+ * to cool (bottom-right). Each color includes a darker border shade and a
+ * lighter accent for glossy 3D tile effects.
  */
 
 export interface RegionTheme {
@@ -13,88 +14,97 @@ export interface RegionTheme {
   accent: string;
 }
 
-export const NORDIC_PASTEL_PALETTE: RegionTheme[] = [
+export const RAINBOW_CANDY_PALETTE: RegionTheme[] = [
   {
     id: 1,
-    name: 'Sage Green',
-    pastel: '#9EB897',
-    border: '#6B8A64',
-    darkContrast: '#2D4527',
-    accent: '#82A37B',
+    name: 'Red',
+    pastel: '#e63946',
+    border: '#c62837',
+    darkContrast: '#8b1a23',
+    accent: '#ff6b7a',
   },
   {
     id: 2,
-    name: 'Dusty Blue',
-    pastel: '#8EAAC7',
-    border: '#5B7C9E',
-    darkContrast: '#243B52',
-    accent: '#7394B7',
+    name: 'Pink',
+    pastel: '#f472b6',
+    border: '#db2777',
+    darkContrast: '#9d174d',
+    accent: '#f9a8d4',
   },
   {
     id: 3,
-    name: 'Soft Butter',
-    pastel: '#F2D382',
-    border: '#C7A246',
-    darkContrast: '#5C4612',
-    accent: '#E3BE64',
+    name: 'Orange',
+    pastel: '#f59e0b',
+    border: '#d97706',
+    darkContrast: '#92400e',
+    accent: '#fbbf24',
   },
   {
     id: 4,
-    name: 'Lavender Mist',
-    pastel: '#BBA8CE',
-    border: '#8B74A3',
-    darkContrast: '#3C2B4E',
-    accent: '#A58EBC',
+    name: 'Yellow',
+    pastel: '#fbbf24',
+    border: '#d97706',
+    darkContrast: '#78350f',
+    accent: '#fde047',
   },
   {
     id: 5,
-    name: 'Terracotta Clay',
-    pastel: '#D68870',
-    border: '#A8573D',
-    darkContrast: '#4A2114',
-    accent: '#C47259',
+    name: 'Green',
+    pastel: '#84cc16',
+    border: '#65a30d',
+    darkContrast: '#3f6212',
+    accent: '#a3e635',
   },
   {
     id: 6,
-    name: 'Warm Blush',
-    pastel: '#E7A598',
-    border: '#B86F60',
-    darkContrast: '#4E2118',
-    accent: '#D38D7E',
+    name: 'Cyan',
+    pastel: '#38bdf8',
+    border: '#0284c7',
+    darkContrast: '#075985',
+    accent: '#7dd3fc',
   },
   {
     id: 7,
-    name: 'Forest Pine',
-    pastel: '#79A697',
-    border: '#4A7566',
-    darkContrast: '#1E382F',
-    accent: '#629181',
+    name: 'Blue',
+    pastel: '#3b82f6',
+    border: '#2563eb',
+    darkContrast: '#1e3a8a',
+    accent: '#60a5fa',
   },
   {
     id: 8,
-    name: 'Oat Cream',
-    pastel: '#D5BDA0',
-    border: '#A38766',
-    darkContrast: '#473623',
-    accent: '#C1A484',
+    name: 'Indigo',
+    pastel: '#6366f1',
+    border: '#4f46e5',
+    darkContrast: '#312e81',
+    accent: '#818cf8',
   },
   {
     id: 9,
-    name: 'Heather Plum',
-    pastel: '#C18BAF',
-    border: '#935880',
-    darkContrast: '#421E36',
-    accent: '#AB7298',
+    name: 'Violet',
+    pastel: '#a78bfa',
+    border: '#8b5cf6',
+    darkContrast: '#5b21b6',
+    accent: '#c4b5fd',
   },
   {
     id: 10,
-    name: 'Fjord Denim',
-    pastel: '#6E94B0',
-    border: '#436B8A',
-    darkContrast: '#1B374E',
-    accent: '#5680A0',
+    name: 'Magenta',
+    pastel: '#c084fc',
+    border: '#a855f7',
+    darkContrast: '#6b21a8',
+    accent: '#d8b4fe',
   },
 ];
+
+/**
+ * Consecutive region ids must land on *distant* hues. Puzzles number regions
+ * 1..n sequentially, so a plain palette walk would paint a 4-region board
+ * entirely red/pink/orange/yellow — reads as three warm blobs. This stride
+ * hops across the hue wheel (4 regions → red/cyan/orange/indigo) so every
+ * neighbouring region pops.
+ */
+const REGION_HUE_ORDER = [0, 5, 2, 7, 3, 9, 1, 6, 4, 8];
 
 export const getRegionTheme = (regionId?: number): RegionTheme => {
   if (!regionId || regionId <= 0) {
@@ -107,8 +117,8 @@ export const getRegionTheme = (regionId?: number): RegionTheme => {
       accent: '#EDE8DA',
     };
   }
-  const index = (regionId - 1) % NORDIC_PASTEL_PALETTE.length;
-  return NORDIC_PASTEL_PALETTE[index];
+  const index = REGION_HUE_ORDER[(regionId - 1) % REGION_HUE_ORDER.length];
+  return RAINBOW_CANDY_PALETTE[index];
 };
 
 export const getRegionColor = (regionId?: number): string => {

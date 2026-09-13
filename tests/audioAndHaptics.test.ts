@@ -113,6 +113,10 @@ describe('Sprint 4: Native Audio & Haptic Feedback ("Juice")', () => {
         'hint',
         'undo',
         'erase',
+        'catPurr',
+        'catHiss',
+        'combo',
+        'linkedSparkle',
       ];
 
       for (const st of soundTypes) {

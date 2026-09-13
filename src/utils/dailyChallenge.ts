@@ -3,6 +3,7 @@ import {
   loadDailyChallengeData,
   DailyChallengeData,
 } from './storage';
+import { APP_NAME } from './theme';
 
 export interface DailyChallengeState {
   currentStreak: number;
@@ -14,8 +15,12 @@ export interface DailyChallengeState {
   nextReward: { days: number; title: string } | null;
 }
 
+// Keep ~1 year of completion history — enough for any streak, prevents the
+// persisted array from growing unboundedly over the app's lifetime.
+const MAX_COMPLETED_DATES = 366;
+
 export const STREAK_REWARDS = [
-  { days: 3, title: 'Sparkle Hint (+1 Hint) 💡' },
+  { days: 3, title: 'Sparkle Paw Charm ✨' },
   { days: 7, title: 'Meadow Scout Badge 🏅' },
   { days: 14, title: 'Puppy Whisperer Badge 🐾' },
   { days: 30, title: 'Master Sitter Golden Trophy 🏆' },
@@ -81,12 +86,15 @@ export async function getDailyChallengeState(): Promise<DailyChallengeState> {
     };
   }
 
-  const isCompletedToday = data.completedDates.includes(today);
+  const isCompletedToday = new Set(data.completedDates).has(today);
 
-  // If player hasn't completed today and missed yesterday, active streak displays 0 until solved
+  // If player hasn't completed today and missed yesterday, active streak is 0.
+  // Persist the reset so stored state doesn't diverge from what we report —
+  // otherwise any direct read of currentStreak would see a stale value.
   let effectiveStreak = data.currentStreak;
-  if (!isCompletedToday && data.lastPlayedDate !== yesterday) {
+  if (!isCompletedToday && data.lastPlayedDate !== yesterday && data.currentStreak !== 0) {
     effectiveStreak = 0;
+    saveDailyChallengeData({ ...data, currentStreak: 0 }).catch(() => {});
   }
 
   const nextReward =
@@ -107,7 +115,6 @@ export async function getDailyChallengeState(): Promise<DailyChallengeState> {
 export async function recordDailyCompletion(stats?: {
   moves?: number;
   time?: number;
-  hintsUsed?: number;
 }): Promise<{
   streak: number;
   isNewRecord: boolean;
@@ -126,7 +133,7 @@ export async function recordDailyCompletion(stats?: {
   const yesterday = getYesterdayDateString();
 
   // Already completed today
-  if (existing.completedDates.includes(today)) {
+  if (new Set(existing.completedDates).has(today)) {
     return {
       streak: existing.currentStreak,
       isNewRecord: false,
@@ -157,7 +164,7 @@ export async function recordDailyCompletion(stats?: {
     currentStreak: newStreak,
     bestStreak,
     lastPlayedDate: today,
-    completedDates: [...existing.completedDates, today],
+    completedDates: [...existing.completedDates.slice(-(MAX_COMPLETED_DATES - 1)), today],
     rewardsClaimed,
   };
 
@@ -176,7 +183,6 @@ export function generateDailyShareText(params: {
   moves: number;
   timeSeconds: number;
   heartsLeft: number;
-  hintsUsed?: number;
   gridSize: number;
   dateDisplay?: string;
 }): string {
@@ -187,10 +193,10 @@ export function generateDailyShareText(params: {
   const timeFormatted = `${minutes}:${seconds}`;
 
   const heartIcons = Array(Math.max(0, Math.min(3, heartsLeft))).fill('❤️').join(' ');
-  const starStatus = heartsLeft === 3 ? '🐾 Paw-fect Clear!' : '🐶 Garden Cleared!';
+  const starStatus = heartsLeft === 3 ? '🐾 Paw-fect Clear!' : '🐶 Puzzle Cleared!';
 
   return [
-    `Jenny's Garden 🐕 ${dateStr}`,
+    `${APP_NAME} 🐕 ${dateStr}`,
     `Daily Walk: ${gridSize}×${gridSize} Meadow`,
     `🔥 Streak: ${streak} ${streak === 1 ? 'Day' : 'Days'}`,
     `${heartIcons} • 🎯 ${moves} Moves • ⏱️ ${timeFormatted}`,

@@ -6,8 +6,14 @@ import {
   generateUndoErase,
   generateHintSparkle,
   generateBgm,
+  generateCatPurr,
+  generateCatHiss,
+  generateComboChime,
+  generateLinkedSparkle,
+  generateWrongBoop,
   getSampleRate,
 } from './audioSynthesis';
+import { loadAudioPrefs, saveAudioPrefs } from './storage';
 
 export type SoundType =
   | 'placePuppy'
@@ -17,7 +23,11 @@ export type SoundType =
   | 'button'
   | 'hint'
   | 'undo'
-  | 'erase';
+  | 'erase'
+  | 'catPurr'
+  | 'catHiss'
+  | 'combo'
+  | 'linkedSparkle';
 
 const getSoundAsset = (key: string): any => {
   try {
@@ -32,8 +42,18 @@ const getSoundAsset = (key: string): any => {
         return require('../../assets/sounds/undo_erase.wav');
       case 'hint_sparkle':
         return require('../../assets/sounds/hint_sparkle.wav');
+      case 'wrong_boop':
+        return require('../../assets/sounds/wrong_boop.wav');
+      case 'cat_purr':
+        return require('../../assets/sounds/cat_purr.wav');
+      case 'cat_hiss':
+        return require('../../assets/sounds/cat_hiss.wav');
+      case 'combo_chime':
+        return require('../../assets/sounds/combo_chime.wav');
+      case 'linked_sparkle':
+        return require('../../assets/sounds/linked_sparkle.wav');
       case 'bgm_acoustic':
-        return require('../../assets/sounds/bgm_acoustic.wav');
+        return require('../../assets/sounds/bgm_acoustic.m4a');
       default:
         return null;
     }
@@ -42,27 +62,37 @@ const getSoundAsset = (key: string): any => {
   }
 };
 
+// Native file-backed assets. Every SoundType has its own file so phones get
+// the same palette the Web Audio synth path produces.
 const SOUND_MAP: Record<SoundType, string> = {
   placePuppy: 'puppy_place',
   markX: 'tile_click',
   button: 'tile_click',
-  wrong: 'tile_click',
+  wrong: 'wrong_boop',
   complete: 'level_clear',
   undo: 'undo_erase',
   erase: 'undo_erase',
   hint: 'hint_sparkle',
+  catPurr: 'cat_purr',
+  catHiss: 'cat_hiss',
+  combo: 'combo_chime',
+  linkedSparkle: 'linked_sparkle',
 };
 
-let HapticsModule: any = null;
-const getHaptics = async () => {
-  if (HapticsModule) return HapticsModule;
-  try {
-    const h = await import('expo-haptics');
-    HapticsModule = h;
-    return HapticsModule;
-  } catch {
-    return null;
-  }
+// Web Audio synthesized buffer per SoundType.
+const WEB_BUFFER_MAP: Record<SoundType, string> = {
+  placePuppy: 'puppyPlace',
+  markX: 'tileClick',
+  button: 'tileClick',
+  wrong: 'wrongBoop',
+  complete: 'levelClear',
+  undo: 'undoErase',
+  erase: 'undoErase',
+  hint: 'hintSparkle',
+  catPurr: 'catPurr',
+  catHiss: 'catHiss',
+  combo: 'comboChime',
+  linkedSparkle: 'linkedSparkle',
 };
 
 class SoundManager {
@@ -97,6 +127,13 @@ class SoundManager {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
+      // Restore persisted audio prefs before any engine reads the toggles
+      const prefs = await loadAudioPrefs().catch(() => null);
+      if (prefs) {
+        this.sfxEnabled = prefs.sfxEnabled;
+        this.bgmEnabled = prefs.bgmEnabled;
+      }
+
       const isWeb =
         typeof window !== 'undefined' && typeof (window as any).document !== 'undefined';
 
@@ -143,6 +180,11 @@ class SoundManager {
         undoErase: generateUndoErase,
         hintSparkle: generateHintSparkle,
         bgm: generateBgm,
+        catPurr: generateCatPurr,
+        catHiss: generateCatHiss,
+        comboChime: generateComboChime,
+        linkedSparkle: generateLinkedSparkle,
+        wrongBoop: generateWrongBoop,
       };
 
       for (const [key, generator] of Object.entries(soundGenerators)) {
@@ -216,46 +258,10 @@ class SoundManager {
     console.log('[SoundManager] Native sound module unavailable in current environment; haptics active');
   }
 
-  // --- Haptics ---
-  private async playHaptic(type: SoundType) {
-    try {
-      const Haptics = await getHaptics();
-      if (!Haptics?.impactAsync) return;
-
-      switch (type) {
-        case 'placePuppy':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          break;
-        case 'markX':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          break;
-        case 'complete':
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          break;
-        case 'wrong':
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          break;
-        case 'button':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          break;
-        case 'hint':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          break;
-        case 'undo':
-        case 'erase':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          break;
-      }
-    } catch {
-      // Ignore haptic errors in unsupported environments
-    }
-  }
-
   // --- Sound Effects Playback ---
+  // NOTE: callers fire their own haptics alongside play() — do NOT trigger
+  // haptics here or every tap vibrates twice.
   async play(type: SoundType) {
-    // Always trigger tactile haptic sensation
-    this.playHaptic(type);
-
     if (!this.sfxEnabled) return;
 
     if (!this.initialized) {
@@ -277,24 +283,7 @@ class SoundManager {
           await this.webAudioCtx.resume();
         }
 
-        let webKey = 'tileClick';
-        switch (type) {
-          case 'placePuppy':
-            webKey = 'puppyPlace';
-            break;
-          case 'complete':
-            webKey = 'levelClear';
-            break;
-          case 'undo':
-          case 'erase':
-            webKey = 'undoErase';
-            break;
-          case 'hint':
-            webKey = 'hintSparkle';
-            break;
-        }
-
-        const buffer = this.webAudioBuffers[webKey];
+        const buffer = this.webAudioBuffers[WEB_BUFFER_MAP[type] ?? 'tileClick'];
         if (buffer) {
           const source = this.webAudioCtx.createBufferSource();
           source.buffer = buffer;
@@ -507,6 +496,7 @@ class SoundManager {
   // --- Toggles & State ---
   setEnabled(enabled: boolean) {
     this.sfxEnabled = enabled;
+    saveAudioPrefs({ sfxEnabled: this.sfxEnabled, bgmEnabled: this.bgmEnabled }).catch(() => {});
     if (this.webAudioCtx && this.sfxGain) {
       this.sfxGain.gain.setValueAtTime(enabled ? 1.0 : 0.0, this.webAudioCtx.currentTime);
     }
@@ -518,6 +508,7 @@ class SoundManager {
 
   setBgmEnabled(enabled: boolean) {
     this.bgmEnabled = enabled;
+    saveAudioPrefs({ sfxEnabled: this.sfxEnabled, bgmEnabled: this.bgmEnabled }).catch(() => {});
     if (this.webAudioCtx && this.bgmGain) {
       this.bgmGain.gain.setValueAtTime(
         enabled ? this.defaultBgmVolume : 0.0,

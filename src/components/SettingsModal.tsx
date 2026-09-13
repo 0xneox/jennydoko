@@ -3,6 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useGameStore } from '../store/gameStore';
 import { soundManager } from '../utils/soundManager';
+import { CandyButton } from './candy/CandyButton';
+import { CandyPanel } from './candy/CandyPanel';
+import { CANDY_GOLD, CANDY_SURFACE, CANDY_TEXT } from '../utils/theme';
+import { LegalDocumentModal } from './LegalDocumentModal';
+import { LegalDocument, PRIVACY_POLICY, TERMS_OF_SERVICE } from '../data/legalText';
 
 interface SettingsModalProps {
   visible: boolean;
@@ -22,12 +27,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const { gameMode, setGameMode } = useGameStore();
   const [soundEnabled, setSoundEnabled] = useState(soundManager.isEnabled());
   const [bgmEnabled, setBgmEnabled] = useState(soundManager.isBgmEnabled());
+  const [legalDoc, setLegalDoc] = useState<LegalDocument | null>(null);
 
   if (!visible) return null;
 
   return (
     <View style={styles.modalOverlay}>
-      <View style={styles.settingsModal}>
+      <CandyPanel style={styles.settingsModal} contentStyle={styles.settingsModalFace}>
         <View style={styles.settingsHeader}>
           <Text style={styles.settingsTitle}>⚙️ Settings</Text>
           <TouchableOpacity
@@ -45,6 +51,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Mode Selection */}
         <Text style={styles.settingsSectionTitle}>Game Mode</Text>
         <View style={styles.settingsModeGroup}>
+          <TouchableOpacity
+            style={[
+              styles.settingsModeOption,
+              gameMode === 'normal' && styles.settingsModeOptionActive,
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setGameMode('normal');
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.settingsModeEmoji}>🌱</Text>
+            <Text
+              style={[
+                styles.settingsModeText,
+                gameMode === 'normal' && styles.settingsModeTextActive,
+              ]}
+            >
+              Normal
+            </Text>
+            <Text style={styles.settingsModeSub}>First 3 oops free</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[
               styles.settingsModeOption,
@@ -138,7 +167,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Text style={styles.settingsSectionTitle}>Story & Learning</Text>
             <View style={styles.storyButtonsRow}>
               {onOpenStory && (
-                <TouchableOpacity
+                <CandyButton
+                  skin="orange"
+                  size="sm"
+                  label="Story of Jenny"
+                  icon={<Text style={styles.settingsStoryIcon}>📖</Text>}
                   style={styles.settingsStoryButton}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -146,15 +179,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onClose();
                     onOpenStory();
                   }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.settingsStoryIcon}>📖</Text>
-                  <Text style={styles.settingsStoryText}>Story of Jenny</Text>
-                </TouchableOpacity>
+                />
               )}
 
               {onOpenTutorial && (
-                <TouchableOpacity
+                <CandyButton
+                  skin="blue"
+                  size="sm"
+                  label="How to Play"
+                  icon={<Text style={styles.settingsStoryIcon}>🎓</Text>}
                   style={styles.settingsStoryButton}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -162,97 +195,99 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onClose();
                     onOpenTutorial();
                   }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.settingsStoryIcon}>🎓</Text>
-                  <Text style={styles.settingsStoryText}>How to Play</Text>
-                </TouchableOpacity>
+                />
               )}
             </View>
           </>
         )}
 
+        {/* Legal Section */}
+        <Text style={styles.settingsSectionTitle}>Legal</Text>
+        <View style={styles.storyButtonsRow}>
+          <CandyButton
+            skin="neutral"
+            size="sm"
+            label="Terms of Service"
+            icon={<Text style={styles.settingsStoryIcon}>📜</Text>}
+            style={styles.settingsStoryButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              soundManager.play('button');
+              setLegalDoc(TERMS_OF_SERVICE);
+            }}
+          />
+          <CandyButton
+            skin="neutral"
+            size="sm"
+            label="Privacy Policy"
+            icon={<Text style={styles.settingsStoryIcon}>🔒</Text>}
+            style={styles.settingsStoryButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              soundManager.play('button');
+              setLegalDoc(PRIVACY_POLICY);
+            }}
+          />
+        </View>
+
         {/* Action buttons */}
         <View style={styles.settingsActions}>
           {onRestart && (
-            <TouchableOpacity
-              style={styles.settingsRestartButton}
+            <CandyButton
+              block
+              skin="red"
+              label="Restart Level"
+              icon={<Text style={styles.settingsStoryIcon}>🔄</Text>}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                soundManager.play('button');
                 onRestart();
               }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.settingsRestartText}>🔄 Restart Level</Text>
-            </TouchableOpacity>
+            />
           )}
 
-          <TouchableOpacity
-            style={styles.settingsCloseButton}
+          <CandyButton
+            block
+            skin="neutral"
+            label="Close"
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               onClose();
             }}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.settingsCloseText}>Close</Text>
-          </TouchableOpacity>
+          />
         </View>
-      </View>
+      </CandyPanel>
+      <LegalDocumentModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  storyButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-  },
-  settingsStoryButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    backgroundColor: '#F7F5F0',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E8E1D5',
-  },
-  settingsStoryIcon: {
-    fontSize: 18,
-  },
-  settingsStoryText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#5C4E3D',
-  },
   modalOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(14, 6, 32, 0.78)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
     padding: 20,
   },
   settingsModal: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 24,
     width: '100%',
     maxWidth: 380,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
+    shadowColor: '#0E0620',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.5,
     shadowRadius: 20,
-    elevation: 12,
+    elevation: 14,
+  },
+  settingsModalFace: {
+    padding: 24,
+    borderColor: CANDY_GOLD.base,
+    borderWidth: 2,
   },
   settingsHeader: {
     flexDirection: 'row',
@@ -262,32 +297,38 @@ const styles = StyleSheet.create({
   },
   settingsTitle: {
     fontSize: 22,
-    fontWeight: '800',
-    color: '#2C3E50',
+    fontWeight: '900',
+    color: CANDY_GOLD.light,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
   },
   hintCloseIcon: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#F0F2F5',
+    backgroundColor: 'rgba(20, 10, 44, 0.45)',
+    borderWidth: 1.5,
+    borderColor: CANDY_SURFACE.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   hintCloseIconText: {
     fontSize: 16,
-    color: '#7F8C8D',
-    fontWeight: '700',
+    color: CANDY_TEXT.onDarkSoft,
+    fontWeight: '900',
   },
   settingsSectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#7F8C8D',
+    fontSize: 13,
+    fontWeight: '900',
+    color: CANDY_GOLD.base,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
     marginBottom: 10,
   },
   settingsModeGroup: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
     marginBottom: 22,
   },
@@ -296,13 +337,13 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#E8ECF0',
+    borderColor: CANDY_SURFACE.bevel,
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: 'rgba(20, 10, 44, 0.4)',
   },
   settingsModeOptionActive: {
-    borderColor: '#4A90E2',
-    backgroundColor: '#EFF6FF',
+    borderColor: CANDY_GOLD.base,
+    backgroundColor: '#7C5CBF',
   },
   settingsModeEmoji: {
     fontSize: 26,
@@ -310,24 +351,25 @@ const styles = StyleSheet.create({
   },
   settingsModeText: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#4B5563',
+    fontWeight: '800',
+    color: CANDY_TEXT.onDarkSoft,
     marginBottom: 2,
   },
   settingsModeTextActive: {
-    color: '#2563EB',
+    color: '#FFFFFF',
   },
   settingsModeSub: {
     fontSize: 11,
-    color: '#9CA3AF',
+    fontWeight: '600',
+    color: CANDY_TEXT.onDarkMuted,
   },
   settingsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 14,
-    borderTopWidth: 1,
-    borderColor: '#F3F4F6',
+    borderTopWidth: 1.5,
+    borderColor: CANDY_SURFACE.border,
     marginBottom: 16,
   },
   settingsRowLeft: {
@@ -340,51 +382,41 @@ const styles = StyleSheet.create({
   },
   settingsRowLabel: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDark,
   },
   toggleSwitch: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: 'rgba(20, 10, 44, 0.55)',
+    borderWidth: 1.5,
+    borderColor: CANDY_SURFACE.bevel,
     minWidth: 64,
     alignItems: 'center',
   },
   toggleSwitchActive: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#25B84E',
+    borderColor: '#0F6B2B',
   },
   toggleSwitchText: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#FFFFFF',
+  },
+  storyButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  settingsStoryButton: {
+    flex: 1,
+  },
+  settingsStoryIcon: {
+    fontSize: 16,
   },
   settingsActions: {
     gap: 10,
     marginTop: 6,
-  },
-  settingsRestartButton: {
-    paddingVertical: 13,
-    borderRadius: 14,
-    backgroundColor: '#FFF1F2',
-    borderWidth: 1,
-    borderColor: '#FECDD3',
-    alignItems: 'center',
-  },
-  settingsRestartText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#E11D48',
-  },
-  settingsCloseButton: {
-    paddingVertical: 13,
-    borderRadius: 14,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-  },
-  settingsCloseText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#4B5563',
   },
 });

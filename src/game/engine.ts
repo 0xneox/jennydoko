@@ -1,15 +1,24 @@
-import { Board, Cell, CellValue, Region, GameState, PuzzleData, Hint, Deduction } from './types';
-import { PuzzleSolver } from './solver';
+import { Board, Cell, Region, GameState, PuzzleData } from './types';
 
 export class GameEngine {
   private static isInsideBoard(row: number, col: number, size: number): boolean {
     return row >= 0 && row < size && col >= 0 && col < size;
   }
   private state: GameState;
-  private solver: PuzzleSolver;
+  // cell (row*size+col) -> Region; regions are immutable for a puzzle's lifetime
+  private cellRegionIndex: Map<number, Region>;
+  // Puppies required per row / column / region (1 = classic, 2 = Twin Puppies)
+  private quota: number;
 
   constructor(puzzleData: PuzzleData) {
     const board = this.createBoard(puzzleData);
+    this.quota = Math.max(1, puzzleData.puppiesPerUnit ?? 1);
+    this.cellRegionIndex = new Map();
+    for (const region of board.regions) {
+      for (const cell of region.cells) {
+        this.cellRegionIndex.set(cell.row * board.gridSize + cell.col, region);
+      }
+    }
     this.state = {
       board,
       hearts: 3,
@@ -18,7 +27,6 @@ export class GameEngine {
       isComplete: false,
       currentLevel: puzzleData.level,
     };
-    this.solver = new PuzzleSolver(board);
   }
 
   private createBoard(puzzleData: PuzzleData): Board {
@@ -27,6 +35,12 @@ export class GameEngine {
       cells[row] = [];
       for (let col = 0; col < puzzleData.gridSize; col++) {
         cells[row][col] = { row, col, value: 'empty' };
+      }
+    }
+
+    for (const cat of puzzleData.cats ?? []) {
+      if (GameEngine.isInsideBoard(cat.row, cat.col, puzzleData.gridSize)) {
+        cells[cat.row][cat.col].value = 'cat';
       }
     }
 
@@ -49,22 +63,17 @@ export class GameEngine {
     return {
       gridSize: board.gridSize,
       cells,
-      regions: board.regions.map(region => ({
-        ...region,
-        cells: region.cells.map(cell => ({ ...cell })),
-      })),
+      regions: board.regions,
     };
-  }
-
-  private static cloneHistory(history: Board[]): Board[] {
-    return history.map(b => GameEngine.cloneBoard(b));
   }
 
   public getState(): GameState {
     return {
       ...this.state,
       board: GameEngine.cloneBoard(this.state.board),
-      history: GameEngine.cloneHistory(this.state.history),
+      // History entries are immutable snapshots — share them instead of
+      // deep-cloning the entire history on every call (O(moves) otherwise).
+      history: this.state.history.slice(),
     };
   }
 
@@ -82,7 +91,6 @@ export class GameEngine {
       board.cells[row][col].value = 'empty';
       this.state.moves++;
       this.state.history.push(GameEngine.cloneBoard(board));
-      this.solver = new PuzzleSolver(board);
       this.state.isComplete = false;
       return true;
     }
@@ -95,7 +103,6 @@ export class GameEngine {
     board.cells[row][col].value = 'puppy';
     this.state.moves++;
     this.state.history.push(GameEngine.cloneBoard(board));
-    this.solver = new PuzzleSolver(board);
 
     if (this.checkWinCondition()) {
       this.state.isComplete = true;
@@ -118,6 +125,10 @@ export class GameEngine {
       return false;
     }
 
+    if (board.cells[row][col].value === 'cat') {
+      return false;
+    }
+
     if (board.cells[row][col].value === 'empty') {
       board.cells[row][col].value = 'marked';
     } else {
@@ -126,7 +137,6 @@ export class GameEngine {
 
     this.state.moves++;
     this.state.history.push(GameEngine.cloneBoard(board));
-    this.solver = new PuzzleSolver(board);
 
     return true;
   }
@@ -136,12 +146,27 @@ export class GameEngine {
     this.state.board = initialBoard;
     this.state.hearts = 3;
     this.state.moves = 0;
-    this.state.history = [initialBoard];
+    this.state.history = [GameEngine.cloneBoard(initialBoard)];
     this.state.isComplete = false;
-    this.solver = new PuzzleSolver(initialBoard);
+  }
+
+  public undo(): boolean {
+    if (this.state.history.length <= 1) {
+      return false;
+    }
+    this.state.history.pop();
+    const board = GameEngine.cloneBoard(this.state.history[this.state.history.length - 1]);
+    this.state.board = board;
+    this.state.moves = Math.max(0, this.state.moves - 1);
+    this.state.isComplete = false;
+    return true;
   }
 
   private isValidPlacement(board: Board, row: number, col: number): boolean {
+    if (board.cells[row][col].value === 'cat') {
+      return false;
+    }
+
     if (!this.validateRow(board, row, col)) {
       return false;
     }
@@ -162,41 +187,42 @@ export class GameEngine {
   }
 
   private validateRow(board: Board, row: number, col: number): boolean {
+    let count = 0;
     for (let c = 0; c < board.gridSize; c++) {
       if (c !== col && board.cells[row][c].value === 'puppy') {
-        return false;
+        count++;
       }
     }
-    return true;
+    return count < this.quota;
   }
 
   private validateColumn(board: Board, row: number, col: number): boolean {
+    let count = 0;
     for (let r = 0; r < board.gridSize; r++) {
       if (r !== row && board.cells[r][col].value === 'puppy') {
-        return false;
+        count++;
       }
     }
-    return true;
+    return count < this.quota;
   }
 
   private validateRegion(board: Board, row: number, col: number): boolean {
-    const cellRegion = board.regions.find(region =>
-      region.cells.some(cell => cell.row === row && cell.col === col)
-    );
+    const cellRegion = this.cellRegionIndex.get(row * board.gridSize + col);
 
     if (!cellRegion) {
       return false;
     }
 
+    let count = 0;
     for (const cell of cellRegion.cells) {
       if (cell.row !== row || cell.col !== col) {
         if (board.cells[cell.row][cell.col].value === 'puppy') {
-          return false;
+          count++;
         }
       }
     }
 
-    return true;
+    return count < this.quota;
   }
 
   private validateAdjacency(board: Board, row: number, col: number): boolean {
@@ -211,7 +237,9 @@ export class GameEngine {
       const newCol = col + dc;
 
       if (GameEngine.isInsideBoard(newRow, newCol, board.gridSize)) {
-        if (board.cells[newRow][newCol].value === 'puppy') {
+        const neighbour = board.cells[newRow][newCol].value;
+        // Cats need the same personal-space buffer puppies do
+        if (neighbour === 'puppy' || neighbour === 'cat') {
           return false;
         }
       }
@@ -224,7 +252,7 @@ export class GameEngine {
     const board = this.state.board;
     const puppyCount = this.countPuppies(board);
 
-    if (puppyCount !== board.gridSize) {
+    if (puppyCount !== board.gridSize * this.quota) {
       return false;
     }
 
@@ -235,7 +263,7 @@ export class GameEngine {
           rowPuppies++;
         }
       }
-      if (rowPuppies !== 1) {
+      if (rowPuppies !== this.quota) {
         return false;
       }
     }
@@ -247,7 +275,7 @@ export class GameEngine {
           colPuppies++;
         }
       }
-      if (colPuppies !== 1) {
+      if (colPuppies !== this.quota) {
         return false;
       }
     }
@@ -259,7 +287,7 @@ export class GameEngine {
           regionPuppies++;
         }
       }
-      if (regionPuppies !== 1) {
+      if (regionPuppies !== this.quota) {
         return false;
       }
     }
@@ -307,17 +335,21 @@ export class GameEngine {
 
   public validateSolution(solution: { row: number; col: number }[]): boolean {
     const board = this.state.board;
+    const quota = this.quota;
     const solutionSet = new Set(
       solution.map(s => `${s.row},${s.col}`)
     );
 
-    if (solutionSet.size !== board.gridSize) {
+    if (solutionSet.size !== board.gridSize * quota) {
       return false;
     }
 
     for (const sol of solution) {
       if (sol.row < 0 || sol.row >= board.gridSize ||
           sol.col < 0 || sol.col >= board.gridSize) {
+        return false;
+      }
+      if (board.cells[sol.row][sol.col].value === 'cat') {
         return false;
       }
     }
@@ -334,7 +366,7 @@ export class GameEngine {
           rowPuppies++;
         }
       }
-      if (rowPuppies !== 1) {
+      if (rowPuppies !== quota) {
         return false;
       }
     }
@@ -346,7 +378,7 @@ export class GameEngine {
           colPuppies++;
         }
       }
-      if (colPuppies !== 1) {
+      if (colPuppies !== quota) {
         return false;
       }
     }
@@ -358,7 +390,7 @@ export class GameEngine {
           regionPuppies++;
         }
       }
-      if (regionPuppies !== 1) {
+      if (regionPuppies !== quota) {
         return false;
       }
     }
@@ -378,7 +410,8 @@ export class GameEngine {
           newRow >= 0 && newRow < tempBoard.gridSize &&
           newCol >= 0 && newCol < tempBoard.gridSize
         ) {
-          if (tempBoard.cells[newRow][newCol].value === 'puppy') {
+          const neighbour = tempBoard.cells[newRow][newCol].value;
+          if (neighbour === 'puppy' || neighbour === 'cat') {
             return false;
           }
         }
@@ -391,6 +424,7 @@ export class GameEngine {
   public countValidSolutions(): number {
     const board = this.state.board;
     const size = board.gridSize;
+    const quota = this.quota;
 
     const regionMap = new Int32Array(size * size);
     for (const region of board.regions) {
@@ -399,77 +433,17 @@ export class GameEngine {
       }
     }
 
-    let solutionCount = 0;
-    const usedCols = new Uint8Array(size);
-    const usedRegions = new Set<number>();
-    const currentCols = new Int32Array(size);
-
-    function solveRow(row: number): void {
-      if (solutionCount >= 2) return;
-      if (row === size) {
-        solutionCount++;
-        return;
-      }
-
-      const prevCol = row > 0 ? currentCols[row - 1] : -99;
-      for (let col = 0; col < size; col++) {
-        if (usedCols[col]) continue;
-        if (Math.abs(col - prevCol) <= 1) continue;
-        const regId = regionMap[row * size + col];
-        if (usedRegions.has(regId)) continue;
-
-        usedCols[col] = 1;
-        usedRegions.add(regId);
-        currentCols[row] = col;
-
-        solveRow(row + 1);
-
-        usedCols[col] = 0;
-        usedRegions.delete(regId);
-        if (solutionCount >= 2) return;
-      }
-    }
-
-    solveRow(0);
-    return solutionCount;
-  }
-
-
-
-  public getEliminationHints(): { row: number; col: number; reason: string }[] {
-    const board = this.state.board;
-    const hints: { row: number; col: number; reason: string }[] = [];
-
-    for (let row = 0; row < board.gridSize; row++) {
-      const regionCounts = new Map<number, number>();
-
-      for (let col = 0; col < board.gridSize; col++) {
-        const cellRegion = board.regions.find(region =>
-          region.cells.some(cell => cell.row === row && cell.col === col)
-        );
-
-        if (cellRegion) {
-          regionCounts.set(cellRegion.id, (regionCounts.get(cellRegion.id) || 0) + 1);
-        }
-      }
-
-      for (const [regionId, count] of regionCounts) {
-        if (count === 1) {
-          const region = board.regions.find(r => r.id === regionId);
-          if (region) {
-            for (let col = 0; col < board.gridSize; col++) {
-              const cellRegion = board.regions.find(r =>
-                r.cells.some(cell => cell.row === row && cell.col === col)
-              );
-
-              if (cellRegion && cellRegion.id !== regionId) {
-                if (board.cells[row][col].value === 'empty') {
-                  hints.push({
-                    row,
-                    col,
-                    reason: `Cannot place puppy here - region ${regionId} must be in row ${row}`
-                  });
-                }
+    // Cat cells and every cell touching a cat are permanently forbidden
+    const forbidden = new Uint8Array(size * size);
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (board.cells[r][c].value === 'cat') {
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              const nr = r + dr;
+              const nc = c + dc;
+              if (nr >= 0 && nr < size && nc >= 0 && nc < size) {
+                forbidden[nr * size + nc] = 1;
               }
             }
           }
@@ -477,175 +451,75 @@ export class GameEngine {
       }
     }
 
-    return hints;
+    let solutionCount = 0;
+    const usedCols = new Uint8Array(size);
+    const usedRegions = new Map<number, number>();
+    // placedCols[row*quota + k] = col of the k-th puppy placed on that row
+    const placedCols = new Int32Array(size * quota).fill(-1);
+
+    function cellUsable(row: number, col: number): boolean {
+      if (forbidden[row * size + col]) return false;
+      if (usedCols[col] >= quota) return false;
+      const regId = regionMap[row * size + col];
+      if ((usedRegions.get(regId) || 0) >= quota) return false;
+      if (row > 0) {
+        for (let k = 0; k < quota; k++) {
+          const pc = placedCols[(row - 1) * quota + k];
+          if (pc >= 0 && Math.abs(col - pc) <= 1) return false;
+        }
+      }
+      return true;
+    }
+
+    // Place `quota` mutually non-adjacent puppies on this row, then recurse.
+    function placeOnRow(row: number, startCol: number, placed: number): void {
+      if (solutionCount >= 2) return;
+      if (placed === quota) {
+        solveRow(row + 1);
+        return;
+      }
+      for (let col = startCol; col < size; col++) {
+        // same-row spacing: previous pick on this row must be >= 2 away
+        if (placed > 0 && col - placedCols[row * quota + placed - 1] <= 1) continue;
+        if (!cellUsable(row, col)) continue;
+
+        const regId = regionMap[row * size + col];
+        usedCols[col]++;
+        usedRegions.set(regId, (usedRegions.get(regId) || 0) + 1);
+        placedCols[row * quota + placed] = col;
+
+        placeOnRow(row, col + 1, placed + 1);
+
+        usedCols[col]--;
+        usedRegions.set(regId, usedRegions.get(regId)! - 1);
+        placedCols[row * quota + placed] = -1;
+        if (solutionCount >= 2) return;
+      }
+    }
+
+    function solveRow(row: number): void {
+      if (solutionCount >= 2) return;
+      if (row === size) {
+        // every row placed `quota` pups — regions/cols hit quota exactly
+        // only if all quotas are met (region capacities enforced during placement)
+        for (const region of board.regions) {
+          if ((usedRegions.get(region.id) || 0) !== quota) return;
+        }
+        for (let c = 0; c < size; c++) {
+          if (usedCols[c] !== quota) return;
+        }
+        solutionCount++;
+        return;
+      }
+      placeOnRow(row, 0, 0);
+    }
+
+    solveRow(0);
+    return solutionCount;
   }
 
   public addHeart(count: number = 1): void {
     this.state.hearts = Math.min(3, this.state.hearts + count);
   }
 
-  public getHint(level: 1 | 2 | 3 | 4 = 1): Hint | null {
-    const deductions = this.solver.findAllDeductions();
-
-    if (deductions.length === 0) {
-      return null;
-    }
-
-    const placementDeductions = deductions.filter(d =>
-      d.technique === 'single_cell_colour' ||
-      d.technique === 'colour_unique_row' ||
-      d.technique === 'colour_unique_column'
-    );
-    const candidates = placementDeductions.length > 0 ? placementDeductions : deductions;
-    candidates.sort((a, b) => a.difficultyValue - b.difficultyValue);
-    const deduction = candidates[0];
-
-    const board = this.state.board;
-    const cellRegion = board.regions.find(r =>
-      r.cells.some(c => c.row === deduction.affectedCell.row && c.col === deduction.affectedCell.col)
-    );
-    const COLOR_NAMES = ['Red', 'Yellow', 'Blue', 'Green', 'Purple', 'Orange', 'Teal', 'Lavender', 'Lime', 'Pink'];
-    const colorName = cellRegion ? COLOR_NAMES[(cellRegion.id - 1) % COLOR_NAMES.length] : 'this';
-    const rNum = deduction.affectedCell.row + 1;
-    const cNum = deduction.affectedCell.col + 1;
-
-    let title = '💡 Hint';
-    let explanation = '';
-    let highlightArea: { rows: number[]; cols: number[]; regions: number[] } = { rows: [], cols: [], regions: [] };
-    let targetCell: { row: number; col: number } | undefined = undefined;
-
-    switch (deduction.technique) {
-      case 'single_cell_colour':
-        if (level === 1) {
-          title = '💡 First Deduction';
-          explanation = 'Look for a colour that has only one possible place.';
-          highlightArea = { rows: [], cols: [], regions: cellRegion ? [cellRegion.id] : [] };
-        } else if (level === 2) {
-          title = '💡 Logical Reason';
-          explanation = `The ${colorName} colour has only one possible cell remaining.`;
-          highlightArea = { rows: [], cols: [], regions: cellRegion ? [cellRegion.id] : [] };
-        } else if (level === 3) {
-          title = '💡 Specific Location';
-          explanation = `Look at Row ${rNum}, Column ${cNum}. The ${colorName} colour must go here.`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-        } else {
-          title = '🐶 Next Puppy';
-          explanation = `Place a puppy at Row ${rNum}, Column ${cNum}!`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-          targetCell = deduction.affectedCell;
-        }
-        break;
-
-      case 'colour_unique_row':
-        if (level === 1) {
-          title = '💡 First Deduction';
-          explanation = 'One row has only one place left for its colour.';
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [], regions: [] };
-        } else if (level === 2) {
-          title = '💡 Logical Reason';
-          explanation = `In Row ${rNum}, ${colorName} can only fit in one spot.`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [], regions: [] };
-        } else if (level === 3) {
-          title = '💡 Specific Location';
-          explanation = `Look at Row ${rNum}, Column ${cNum}. ${colorName} has only one spot in this row.`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-        } else {
-          title = '🐶 Next Puppy';
-          explanation = `Place a puppy at Row ${rNum}, Column ${cNum}!`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-          targetCell = deduction.affectedCell;
-        }
-        break;
-
-      case 'colour_unique_column':
-        if (level === 1) {
-          title = '💡 First Deduction';
-          explanation = 'One column has only one place left for its colour.';
-          highlightArea = { rows: [], cols: [deduction.affectedCell.col], regions: [] };
-        } else if (level === 2) {
-          title = '💡 Logical Reason';
-          explanation = `In Column ${cNum}, ${colorName} can only fit in one spot.`;
-          highlightArea = { rows: [], cols: [deduction.affectedCell.col], regions: [] };
-        } else if (level === 3) {
-          title = '💡 Specific Location';
-          explanation = `Look at Column ${cNum}, Row ${rNum}. ${colorName} has only one spot in this column.`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-        } else {
-          title = '🐶 Next Puppy';
-          explanation = `Place a puppy at Row ${rNum}, Column ${cNum}!`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-          targetCell = deduction.affectedCell;
-        }
-        break;
-
-      case 'neighbour_elimination':
-        if (level === 1) {
-          title = '💡 Neighbour Rule';
-          explanation = 'Remember puppies cannot touch, even diagonally.';
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-        } else if (level === 2) {
-          title = '💡 Logical Reason';
-          explanation = 'A placed puppy prevents neighbours from having puppies here.';
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-        } else if (level === 3) {
-          title = '💡 Specific Location';
-          explanation = `Check Row ${rNum}, Column ${cNum} to mark impossible spots.`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-        } else {
-          title = '🐶 Safe Elimination';
-          explanation = `Row ${rNum}, Column ${cNum} cannot touch any existing puppies.`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-          targetCell = deduction.affectedCell;
-        }
-        break;
-
-      default:
-        if (level === 1) {
-          title = '💡 First Deduction';
-          explanation = board.gridSize >= 6
-            ? `There's a small bottleneck in this ${board.gridSize}×${board.gridSize} board.`
-            : 'Look closely at rows and columns with almost all spots marked.';
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [], regions: [] };
-        } else if (level === 2) {
-          title = '💡 Logical Reason';
-          explanation = `Row ${rNum} has only one valid position remaining.`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [], regions: [] };
-        } else if (level === 3) {
-          title = '💡 Specific Location';
-          explanation = `Look closely at Row ${rNum}, Column ${cNum}.`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-        } else {
-          title = '🐶 Next Puppy';
-          explanation = `This is the next puppy at Row ${rNum}, Column ${cNum}!`;
-          highlightArea = { rows: [deduction.affectedCell.row], cols: [deduction.affectedCell.col], regions: [] };
-          targetCell = deduction.affectedCell;
-        }
-        break;
-    }
-
-    return {
-      level,
-      technique: deduction.technique,
-      title,
-      explanation,
-      highlightArea,
-      targetCell,
-    };
-  }
-
-  public getAllDeductions(): Deduction[] {
-    return this.solver.findAllDeductions();
-  }
-
-  public hasLogicalStartingMove(): boolean {
-    return this.solver.hasLogicalStartingMove();
-  }
-
-  public getDifficultyScore(): number {
-    return this.solver.calculateDifficultyScore();
-  }
-
-  public getRequiredTechniques() {
-    return this.solver.getRequiredTechniques();
-  }
 }

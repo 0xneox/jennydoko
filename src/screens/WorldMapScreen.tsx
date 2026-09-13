@@ -13,6 +13,10 @@ import { useGameStore } from '../store/gameStore';
 import { CHAPTERS, getChapterIndexForLevel } from '../data/chapterData';
 import { getTotalStats, GameStats } from '../utils/statistics';
 import { soundManager } from '../utils/soundManager';
+import { CandyBackground } from '../components/candy/CandyBackground';
+import { CandyButton } from '../components/candy/CandyButton';
+import { CandyPanel } from '../components/candy/CandyPanel';
+import { CANDY_GOLD, CANDY_SURFACE, CANDY_TEXT } from '../utils/theme';
 
 export const WorldMapScreen: React.FC = () => {
   const { currentLevel, unlockedLevels, startLevel, setActiveScreen } = useGameStore();
@@ -75,17 +79,17 @@ export const WorldMapScreen: React.FC = () => {
   };
 
   return (
+    <CandyBackground>
     <SafeAreaView style={styles.safeArea}>
       {/* Top Header Bar */}
       <View style={styles.headerBar}>
-        <TouchableOpacity
-          style={styles.backButton}
+        <CandyButton
+          skin="grape"
+          size="sm"
+          label="Home"
+          icon={<Text style={styles.backButtonIcon}>⬅️</Text>}
           onPress={handleBackHome}
-          activeOpacity={0.7}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.backButtonText}>⬅️ Home</Text>
-        </TouchableOpacity>
+        />
 
         <View style={styles.headerTitleGroup}>
           <Text style={styles.headerTitle}>Puppy Passport 🐾</Text>
@@ -197,9 +201,10 @@ export const WorldMapScreen: React.FC = () => {
           </ScrollView>
 
           {/* Chapter Details Hero Card */}
-          <View
-            style={[
-              styles.chapterHeroCard,
+          <CandyPanel
+            style={styles.chapterHeroCard}
+            contentStyle={[
+              styles.chapterHeroFace,
               { borderLeftColor: activeChapter.accentColor },
             ]}
           >
@@ -215,10 +220,10 @@ export const WorldMapScreen: React.FC = () => {
               </View>
             </View>
             <Text style={styles.chapterHeroDesc}>{activeChapter.description}</Text>
-          </View>
+          </CandyPanel>
 
           {/* Level Nodes Grid */}
-          <View style={styles.levelsSection}>
+          <CandyPanel contentStyle={styles.levelsSection}>
             <View style={styles.levelsSectionHeader}>
               <Text style={styles.levelsSectionTitle}>Levels</Text>
               <Text style={styles.levelsSectionHint}>
@@ -259,10 +264,7 @@ export const WorldMapScreen: React.FC = () => {
                           style={[
                             styles.levelNumber,
                             completed && styles.levelNumberCompleted,
-                            isCurrent && [
-                              styles.levelNumberCurrent,
-                              { color: activeChapter.accentColor },
-                            ],
+                            isCurrent && styles.levelNumberCurrent,
                           ]}
                         >
                           {lvl}
@@ -282,17 +284,17 @@ export const WorldMapScreen: React.FC = () => {
                 );
               })}
             </View>
-          </View>
+          </CandyPanel>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
+    </CandyBackground>
   );
 };
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FBF9F5',
   },
   headerBar: {
     flexDirection: 'row',
@@ -300,33 +302,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EBE5D9',
-    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1.5,
+    borderBottomColor: CANDY_SURFACE.border,
+    backgroundColor: 'rgba(20, 10, 44, 0.35)',
   },
-  backButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: '#F3EFE6',
-  },
-  backButtonText: {
+  backButtonIcon: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#5D5041',
   },
   headerTitleGroup: {
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#2C3E50',
+    fontSize: 19,
+    fontWeight: '900',
+    color: CANDY_GOLD.light,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
   },
   headerSubtitle: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#8A7A68',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkSoft,
     marginTop: 1,
   },
   headerPlaceholder: {
@@ -344,34 +341,36 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     fontSize: 12,
-    fontWeight: '800',
-    color: '#9C8E7D',
-    letterSpacing: 0.8,
+    fontWeight: '900',
+    color: CANDY_GOLD.base,
+    letterSpacing: 1,
     marginBottom: 10,
     marginLeft: 4,
   },
+
+  /* Chapter Carousel */
   chapterCarousel: {
     paddingBottom: 8,
     gap: 12,
   },
   chapterCard: {
     width: 140,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: CANDY_SURFACE.top,
     borderRadius: 18,
     padding: 14,
     borderWidth: 2,
-    borderColor: '#E8E2D6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    borderColor: CANDY_SURFACE.bevel,
+    shadowColor: '#0E0620',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
   chapterCardSelected: {
-    backgroundColor: '#FFFFFF',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 4,
+    borderWidth: 2.5,
+    shadowOpacity: 0.55,
+    shadowRadius: 12,
+    elevation: 7,
   },
   chapterCardHeader: {
     flexDirection: 'row',
@@ -386,50 +385,54 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
   },
   diffBadgeText: {
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#FFFFFF',
   },
   chapterCardTitle: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#2C3E50',
+    fontWeight: '900',
+    color: CANDY_TEXT.onDark,
     marginBottom: 2,
   },
   chapterCardSub: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#7F8C8D',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkSoft,
     marginBottom: 10,
   },
   progressTrack: {
-    height: 6,
-    backgroundColor: '#EFEAE1',
-    borderRadius: 3,
+    height: 8,
+    backgroundColor: 'rgba(20, 10, 44, 0.55)',
+    borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 4,
+    borderWidth: 1,
+    borderColor: CANDY_SURFACE.bevel,
   },
   progressBar: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 4,
   },
   progressText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#9E9282',
+    fontWeight: '800',
+    color: CANDY_TEXT.onDarkMuted,
     textAlign: 'right',
   },
   stampSealBadge: {
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderRadius: 8,
     paddingVertical: 3,
     paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center',
     transform: [{ rotate: '-4deg' }],
-    backgroundColor: '#FAF5EE',
+    backgroundColor: 'rgba(20, 10, 44, 0.5)',
     marginTop: 2,
   },
   stampSealText: {
@@ -437,20 +440,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.5,
   },
+
+  /* Chapter Hero Card */
   chapterHeroCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
     marginTop: 16,
     marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#E8E2D6',
+  },
+  chapterHeroFace: {
+    padding: 16,
     borderLeftWidth: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
   },
   chapterHeroHeader: {
     flexDirection: 'row',
@@ -466,32 +464,25 @@ const styles = StyleSheet.create({
   },
   chapterHeroTitle: {
     fontSize: 17,
-    fontWeight: '800',
-    color: '#2C3E50',
+    fontWeight: '900',
+    color: CANDY_TEXT.onDark,
   },
   chapterHeroGridSize: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#7F8C8D',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkSoft,
     marginTop: 2,
   },
   chapterHeroDesc: {
     fontSize: 13,
-    fontWeight: '500',
-    color: '#5D5041',
+    fontWeight: '600',
+    color: CANDY_TEXT.onDarkSoft,
     lineHeight: 18,
   },
+
+  /* Level Nodes */
   levelsSection: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
     padding: 18,
-    borderWidth: 1,
-    borderColor: '#E8E2D6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
   levelsSectionHeader: {
     flexDirection: 'row',
@@ -499,18 +490,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
     paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0EBE1',
+    borderBottomWidth: 1.5,
+    borderBottomColor: CANDY_SURFACE.border,
   },
   levelsSectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#2C3E50',
+    fontSize: 17,
+    fontWeight: '900',
+    color: CANDY_GOLD.light,
   },
   levelsSectionHint: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#9E9282',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkSoft,
   },
   levelGrid: {
     flexDirection: 'row',
@@ -521,42 +512,48 @@ const styles = StyleSheet.create({
   levelNode: {
     width: 60,
     height: 60,
-    borderRadius: 16,
-    backgroundColor: '#F9F7F2',
-    borderWidth: 1.5,
-    borderColor: '#E2D9C8',
+    borderRadius: 18,
+    backgroundColor: '#7C5CBF',
+    borderWidth: 2,
+    borderColor: '#3D2670',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-  },
-  levelNodeCompleted: {
-    backgroundColor: '#F4FBF7',
-    borderColor: '#A3E0C1',
-  },
-  levelNodeCurrent: {
-    borderWidth: 2.5,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
+    shadowColor: '#0E0620',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
     elevation: 3,
   },
+  levelNodeCompleted: {
+    backgroundColor: '#26B85B',
+    borderColor: '#12692F',
+  },
+  levelNodeCurrent: {
+    borderWidth: 3,
+    backgroundColor: '#F5B324',
+  },
   levelNodeLocked: {
-    backgroundColor: '#ECE7DC',
-    borderColor: '#DDD6C7',
-    opacity: 0.65,
+    backgroundColor: 'rgba(20, 10, 44, 0.5)',
+    borderColor: '#3D2670',
+    opacity: 0.7,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   levelNumber: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#4B5563',
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 0,
   },
   levelNumberCompleted: {
-    color: '#27AE60',
+    color: '#FFFFFF',
   },
   levelNumberCurrent: {
     fontWeight: '900',
+    color: '#4A3000',
   },
   lockIcon: {
     fontSize: 16,

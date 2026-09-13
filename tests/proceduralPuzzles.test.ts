@@ -1,6 +1,7 @@
 import { getPuzzle, getDailyPuzzle, getLevelConfig } from '../src/data/proceduralPuzzles';
 import { CHAPTERS, getChapterForLevel, getChapterIndexForLevel } from '../src/data/chapterData';
 import { useGameStore } from '../src/store/gameStore';
+import { GameEngine } from '../src/game/engine';
 
 describe('Step 2: Content Scaling to 1000 Levels & 50 Thematic Chapters', () => {
   describe('Deterministic Procedural Generation', () => {
@@ -34,24 +35,38 @@ describe('Step 2: Content Scaling to 1000 Levels & 50 Thematic Chapters', () => 
       for (const lvl of testLevels) {
         const puzzle = getPuzzle(lvl);
         const { gridSize, solution, regions } = puzzle;
+        const quota = puzzle.puppiesPerUnit ?? 1;
 
         expect(puzzle.level).toBe(lvl);
-        expect(solution.length).toBe(gridSize);
+        expect(solution.length).toBe(gridSize * quota);
         expect(regions.length).toBe(gridSize);
 
-        // Check rows uniqueness
-        const rows = new Set(solution.map(p => p.row));
-        expect(rows.size).toBe(gridSize);
-
-        // Check columns uniqueness
-        const cols = new Set(solution.map(p => p.col));
-        expect(cols.size).toBe(gridSize);
+        // Every row/column holds exactly `quota` pups
+        const rowCounts = new Map<number, number>();
+        const colCounts = new Map<number, number>();
+        for (const p of solution) {
+          rowCounts.set(p.row, (rowCounts.get(p.row) || 0) + 1);
+          colCounts.set(p.col, (colCounts.get(p.col) || 0) + 1);
+        }
+        expect(rowCounts.size).toBe(gridSize);
+        expect(colCounts.size).toBe(gridSize);
+        for (const count of rowCounts.values()) expect(count).toBe(quota);
+        for (const count of colCounts.values()) expect(count).toBe(quota);
 
         // Check non-touching constraint (including diagonals)
-        for (let i = 0; i < gridSize; i++) {
-          for (let j = i + 1; j < gridSize; j++) {
+        for (let i = 0; i < solution.length; i++) {
+          for (let j = i + 1; j < solution.length; j++) {
             const dr = Math.abs(solution[i].row - solution[j].row);
             const dc = Math.abs(solution[i].col - solution[j].col);
+            expect(dr <= 1 && dc <= 1).toBe(false);
+          }
+        }
+
+        // No solution pup may sit on or touch a grumpy cat
+        for (const cat of puzzle.cats ?? []) {
+          for (const p of solution) {
+            const dr = Math.abs(p.row - cat.row);
+            const dc = Math.abs(p.col - cat.col);
             expect(dr <= 1 && dc <= 1).toBe(false);
           }
         }
@@ -65,7 +80,7 @@ describe('Step 2: Content Scaling to 1000 Levels & 50 Thematic Chapters', () => 
         }
         expect(covered.size).toBe(gridSize * gridSize);
 
-        // Check 1 puppy per region
+        // Check `quota` puppies per region
         const regionPuppyCount = new Map<number, number>();
         for (const pup of solution) {
           const reg = regions.find(r => r.cells.some(c => c.row === pup.row && c.col === pup.col));
@@ -73,7 +88,7 @@ describe('Step 2: Content Scaling to 1000 Levels & 50 Thematic Chapters', () => 
           regionPuppyCount.set(reg!.id, (regionPuppyCount.get(reg!.id) || 0) + 1);
         }
         for (const count of regionPuppyCount.values()) {
-          expect(count).toBe(1);
+          expect(count).toBe(quota);
         }
       }
     });
@@ -136,6 +151,47 @@ describe('Step 2: Content Scaling to 1000 Levels & 50 Thematic Chapters', () => 
       store.startLevel(-10);
       state = useGameStore.getState();
       expect(state.currentLevel).toBe(1);
+    });
+  });
+
+  describe('Chapter Twist Mechanics (Levels 201+)', () => {
+    it('introduces grumpy cats at levels 201-300', () => {
+      const puzzle = getPuzzle(250);
+      expect(puzzle.puppiesPerUnit ?? 1).toBe(1);
+      expect((puzzle.cats ?? []).length).toBeGreaterThanOrEqual(1);
+
+      // Cat cells are real cells on the board and untouchable
+      const engine = new GameEngine(puzzle);
+      const cat = puzzle.cats![0];
+      expect(engine.getState().board.cells[cat.row][cat.col].value).toBe('cat');
+      expect(engine.markCell(cat.row, cat.col)).toBe(false);
+    });
+
+    it('introduces linked (non-contiguous) beds at levels 301-400', () => {
+      const puzzle = getPuzzle(350);
+      const linked = puzzle.regions.filter(r => r.linked);
+      expect(linked.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('introduces twin puppies at levels 601-800', () => {
+      const puzzle = getPuzzle(650);
+      expect(puzzle.puppiesPerUnit).toBe(2);
+      expect(puzzle.solution.length).toBe(puzzle.gridSize * 2);
+
+      // The twin solution must satisfy 2-per-unit + no touching via the engine
+      const engine = new GameEngine(puzzle);
+      for (const cell of puzzle.solution) {
+        engine.placePuppy(cell.row, cell.col);
+      }
+      expect(engine.getState().isComplete).toBe(true);
+    });
+
+    it('chains cats + linked beds on 7x7 combo levels (401-600)', () => {
+      const puzzle = getPuzzle(450);
+      expect(puzzle.gridSize).toBe(7);
+      expect(puzzle.puppiesPerUnit ?? 1).toBe(1);
+      expect((puzzle.cats ?? []).length).toBeGreaterThanOrEqual(1);
+      expect(puzzle.regions.filter(r => r.linked).length).toBeGreaterThanOrEqual(1);
     });
   });
 });

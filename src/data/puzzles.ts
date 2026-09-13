@@ -56,7 +56,7 @@ export const level1: PuzzleData = {
 };
 
 export const level2: PuzzleData = {
-  level: 2,
+  level: 5,
   gridSize: 5,
   regions: [
     {
@@ -126,7 +126,7 @@ export const level2: PuzzleData = {
 };
 
 export const level3: PuzzleData = {
-  "level": 3,
+  "level": 2,
   "gridSize": 4,
   "regions": [
     {
@@ -244,7 +244,7 @@ export const level3: PuzzleData = {
 };
 
 export const level4: PuzzleData = {
-  "level": 4,
+  "level": 3,
   "gridSize": 4,
   "regions": [
     {
@@ -362,7 +362,7 @@ export const level4: PuzzleData = {
 };
 
 export const level5: PuzzleData = {
-  "level": 5,
+  "level": 4,
   "gridSize": 4,
   "regions": [
     {
@@ -4492,7 +4492,7 @@ export const level25: PuzzleData = {
 };
 
 export const level26: PuzzleData = {
-  "level": 26,
+  "level": 36,
   "gridSize": 7,
   "regions": [
     {
@@ -4771,7 +4771,7 @@ export const level26: PuzzleData = {
 };
 
 export const level27: PuzzleData = {
-  "level": 27,
+  "level": 37,
   "gridSize": 7,
   "regions": [
     {
@@ -5050,7 +5050,7 @@ export const level27: PuzzleData = {
 };
 
 export const level28: PuzzleData = {
-  "level": 28,
+  "level": 38,
   "gridSize": 7,
   "regions": [
     {
@@ -5329,7 +5329,7 @@ export const level28: PuzzleData = {
 };
 
 export const level29: PuzzleData = {
-  "level": 29,
+  "level": 39,
   "gridSize": 7,
   "regions": [
     {
@@ -5608,7 +5608,7 @@ export const level29: PuzzleData = {
 };
 
 export const level30: PuzzleData = {
-  "level": 30,
+  "level": 40,
   "gridSize": 7,
   "regions": [
     {
@@ -5887,7 +5887,7 @@ export const level30: PuzzleData = {
 };
 
 export const level31: PuzzleData = {
-  "level": 31,
+  "level": 41,
   "gridSize": 7,
   "regions": [
     {
@@ -6166,7 +6166,7 @@ export const level31: PuzzleData = {
 };
 
 export const level32: PuzzleData = {
-  "level": 32,
+  "level": 42,
   "gridSize": 7,
   "regions": [
     {
@@ -6445,7 +6445,7 @@ export const level32: PuzzleData = {
 };
 
 export const level33: PuzzleData = {
-  "level": 33,
+  "level": 43,
   "gridSize": 7,
   "regions": [
     {
@@ -6724,7 +6724,7 @@ export const level33: PuzzleData = {
 };
 
 export const level34: PuzzleData = {
-  "level": 34,
+  "level": 44,
   "gridSize": 7,
   "regions": [
     {
@@ -7003,7 +7003,7 @@ export const level34: PuzzleData = {
 };
 
 export const level35: PuzzleData = {
-  "level": 35,
+  "level": 45,
   "gridSize": 7,
   "regions": [
     {
@@ -7282,7 +7282,7 @@ export const level35: PuzzleData = {
 };
 
 export const level36: PuzzleData = {
-  "level": 36,
+  "level": 56,
   "gridSize": 8,
   "regions": [
     {
@@ -7630,7 +7630,7 @@ export const level36: PuzzleData = {
 };
 
 export const level37: PuzzleData = {
-  "level": 37,
+  "level": 57,
   "gridSize": 8,
   "regions": [
     {
@@ -7978,7 +7978,7 @@ export const level37: PuzzleData = {
 };
 
 export const level38: PuzzleData = {
-  "level": 38,
+  "level": 58,
   "gridSize": 8,
   "regions": [
     {
@@ -8326,7 +8326,7 @@ export const level38: PuzzleData = {
 };
 
 export const level39: PuzzleData = {
-  "level": 39,
+  "level": 59,
   "gridSize": 8,
   "regions": [
     {
@@ -8674,7 +8674,7 @@ export const level39: PuzzleData = {
 };
 
 export const level40: PuzzleData = {
-  "level": 40,
+  "level": 60,
   "gridSize": 8,
   "regions": [
     {
@@ -9022,7 +9022,7 @@ export const level40: PuzzleData = {
 };
 
 export const level41: PuzzleData = {
-  "level": 41,
+  "level": 71,
   "gridSize": 9,
   "regions": [
     {
@@ -9447,7 +9447,7 @@ export const level41: PuzzleData = {
 };
 
 export const level42: PuzzleData = {
-  "level": 42,
+  "level": 72,
   "gridSize": 9,
   "regions": [
     {
@@ -9872,7 +9872,7 @@ export const level42: PuzzleData = {
 };
 
 export const level43: PuzzleData = {
-  "level": 43,
+  "level": 73,
   "gridSize": 9,
   "regions": [
     {
@@ -10297,7 +10297,7 @@ export const level43: PuzzleData = {
 };
 
 export const level44: PuzzleData = {
-  "level": 44,
+  "level": 74,
   "gridSize": 9,
   "regions": [
     {
@@ -10722,7 +10722,7 @@ export const level44: PuzzleData = {
 };
 
 export const level45: PuzzleData = {
-  "level": 45,
+  "level": 75,
   "gridSize": 9,
   "regions": [
     {
@@ -11147,7 +11147,7 @@ export const level45: PuzzleData = {
 };
 
 export const level46: PuzzleData = {
-  "level": 46,
+  "level": 86,
   "gridSize": 10,
   "regions": [
     {
@@ -11657,7 +11657,7 @@ export const level46: PuzzleData = {
 };
 
 export const level47: PuzzleData = {
-  "level": 47,
+  "level": 87,
   "gridSize": 10,
   "regions": [
     {
@@ -12167,7 +12167,7 @@ export const level47: PuzzleData = {
 };
 
 export const level48: PuzzleData = {
-  "level": 48,
+  "level": 88,
   "gridSize": 10,
   "regions": [
     {
@@ -12677,7 +12677,7 @@ export const level48: PuzzleData = {
 };
 
 export const level49: PuzzleData = {
-  "level": 49,
+  "level": 89,
   "gridSize": 10,
   "regions": [
     {
@@ -13187,7 +13187,7 @@ export const level49: PuzzleData = {
 };
 
 export const level50: PuzzleData = {
-  "level": 50,
+  "level": 90,
   "gridSize": 10,
   "regions": [
     {
@@ -13697,7 +13697,7 @@ export const level50: PuzzleData = {
 };
 
 export const level51: PuzzleData = {
-  "level": 51,
+  "level": 26,
   "gridSize": 6,
   "regions": [
     {
@@ -13915,7 +13915,7 @@ export const level51: PuzzleData = {
 };
 
 export const level52: PuzzleData = {
-  "level": 52,
+  "level": 27,
   "gridSize": 6,
   "regions": [
     {
@@ -14133,7 +14133,7 @@ export const level52: PuzzleData = {
 };
 
 export const level53: PuzzleData = {
-  "level": 53,
+  "level": 28,
   "gridSize": 6,
   "regions": [
     {
@@ -14351,7 +14351,7 @@ export const level53: PuzzleData = {
 };
 
 export const level54: PuzzleData = {
-  "level": 54,
+  "level": 29,
   "gridSize": 6,
   "regions": [
     {
@@ -14569,7 +14569,7 @@ export const level54: PuzzleData = {
 };
 
 export const level55: PuzzleData = {
-  "level": 55,
+  "level": 30,
   "gridSize": 6,
   "regions": [
     {
@@ -14787,7 +14787,7 @@ export const level55: PuzzleData = {
 };
 
 export const level56: PuzzleData = {
-  "level": 56,
+  "level": 31,
   "gridSize": 6,
   "regions": [
     {
@@ -15005,7 +15005,7 @@ export const level56: PuzzleData = {
 };
 
 export const level57: PuzzleData = {
-  "level": 57,
+  "level": 32,
   "gridSize": 6,
   "regions": [
     {
@@ -15223,7 +15223,7 @@ export const level57: PuzzleData = {
 };
 
 export const level58: PuzzleData = {
-  "level": 58,
+  "level": 33,
   "gridSize": 6,
   "regions": [
     {
@@ -15441,7 +15441,7 @@ export const level58: PuzzleData = {
 };
 
 export const level59: PuzzleData = {
-  "level": 59,
+  "level": 34,
   "gridSize": 6,
   "regions": [
     {
@@ -15659,7 +15659,7 @@ export const level59: PuzzleData = {
 };
 
 export const level60: PuzzleData = {
-  "level": 60,
+  "level": 35,
   "gridSize": 6,
   "regions": [
     {
@@ -15877,7 +15877,7 @@ export const level60: PuzzleData = {
 };
 
 export const level61: PuzzleData = {
-  "level": 61,
+  "level": 46,
   "gridSize": 7,
   "regions": [
     {
@@ -16156,7 +16156,7 @@ export const level61: PuzzleData = {
 };
 
 export const level62: PuzzleData = {
-  "level": 62,
+  "level": 47,
   "gridSize": 7,
   "regions": [
     {
@@ -16435,7 +16435,7 @@ export const level62: PuzzleData = {
 };
 
 export const level63: PuzzleData = {
-  "level": 63,
+  "level": 48,
   "gridSize": 7,
   "regions": [
     {
@@ -16714,7 +16714,7 @@ export const level63: PuzzleData = {
 };
 
 export const level64: PuzzleData = {
-  "level": 64,
+  "level": 49,
   "gridSize": 7,
   "regions": [
     {
@@ -16993,7 +16993,7 @@ export const level64: PuzzleData = {
 };
 
 export const level65: PuzzleData = {
-  "level": 65,
+  "level": 50,
   "gridSize": 7,
   "regions": [
     {
@@ -17272,7 +17272,7 @@ export const level65: PuzzleData = {
 };
 
 export const level66: PuzzleData = {
-  "level": 66,
+  "level": 51,
   "gridSize": 7,
   "regions": [
     {
@@ -17551,7 +17551,7 @@ export const level66: PuzzleData = {
 };
 
 export const level67: PuzzleData = {
-  "level": 67,
+  "level": 52,
   "gridSize": 7,
   "regions": [
     {
@@ -17830,7 +17830,7 @@ export const level67: PuzzleData = {
 };
 
 export const level68: PuzzleData = {
-  "level": 68,
+  "level": 53,
   "gridSize": 7,
   "regions": [
     {
@@ -18109,7 +18109,7 @@ export const level68: PuzzleData = {
 };
 
 export const level69: PuzzleData = {
-  "level": 69,
+  "level": 54,
   "gridSize": 7,
   "regions": [
     {
@@ -18388,7 +18388,7 @@ export const level69: PuzzleData = {
 };
 
 export const level70: PuzzleData = {
-  "level": 70,
+  "level": 55,
   "gridSize": 7,
   "regions": [
     {
@@ -18667,7 +18667,7 @@ export const level70: PuzzleData = {
 };
 
 export const level71: PuzzleData = {
-  "level": 71,
+  "level": 61,
   "gridSize": 8,
   "regions": [
     {
@@ -19015,7 +19015,7 @@ export const level71: PuzzleData = {
 };
 
 export const level72: PuzzleData = {
-  "level": 72,
+  "level": 62,
   "gridSize": 8,
   "regions": [
     {
@@ -19363,7 +19363,7 @@ export const level72: PuzzleData = {
 };
 
 export const level73: PuzzleData = {
-  "level": 73,
+  "level": 63,
   "gridSize": 8,
   "regions": [
     {
@@ -19711,7 +19711,7 @@ export const level73: PuzzleData = {
 };
 
 export const level74: PuzzleData = {
-  "level": 74,
+  "level": 64,
   "gridSize": 8,
   "regions": [
     {
@@ -20059,7 +20059,7 @@ export const level74: PuzzleData = {
 };
 
 export const level75: PuzzleData = {
-  "level": 75,
+  "level": 65,
   "gridSize": 8,
   "regions": [
     {
@@ -20407,7 +20407,7 @@ export const level75: PuzzleData = {
 };
 
 export const level76: PuzzleData = {
-  "level": 76,
+  "level": 66,
   "gridSize": 8,
   "regions": [
     {
@@ -20755,7 +20755,7 @@ export const level76: PuzzleData = {
 };
 
 export const level77: PuzzleData = {
-  "level": 77,
+  "level": 67,
   "gridSize": 8,
   "regions": [
     {
@@ -21103,7 +21103,7 @@ export const level77: PuzzleData = {
 };
 
 export const level78: PuzzleData = {
-  "level": 78,
+  "level": 68,
   "gridSize": 8,
   "regions": [
     {
@@ -21451,7 +21451,7 @@ export const level78: PuzzleData = {
 };
 
 export const level79: PuzzleData = {
-  "level": 79,
+  "level": 69,
   "gridSize": 8,
   "regions": [
     {
@@ -21799,7 +21799,7 @@ export const level79: PuzzleData = {
 };
 
 export const level80: PuzzleData = {
-  "level": 80,
+  "level": 70,
   "gridSize": 8,
   "regions": [
     {
@@ -22147,7 +22147,7 @@ export const level80: PuzzleData = {
 };
 
 export const level81: PuzzleData = {
-  "level": 81,
+  "level": 76,
   "gridSize": 9,
   "regions": [
     {
@@ -22572,7 +22572,7 @@ export const level81: PuzzleData = {
 };
 
 export const level82: PuzzleData = {
-  "level": 82,
+  "level": 77,
   "gridSize": 9,
   "regions": [
     {
@@ -22997,7 +22997,7 @@ export const level82: PuzzleData = {
 };
 
 export const level83: PuzzleData = {
-  "level": 83,
+  "level": 78,
   "gridSize": 9,
   "regions": [
     {
@@ -23422,7 +23422,7 @@ export const level83: PuzzleData = {
 };
 
 export const level84: PuzzleData = {
-  "level": 84,
+  "level": 79,
   "gridSize": 9,
   "regions": [
     {
@@ -23847,7 +23847,7 @@ export const level84: PuzzleData = {
 };
 
 export const level85: PuzzleData = {
-  "level": 85,
+  "level": 80,
   "gridSize": 9,
   "regions": [
     {
@@ -24272,7 +24272,7 @@ export const level85: PuzzleData = {
 };
 
 export const level86: PuzzleData = {
-  "level": 86,
+  "level": 81,
   "gridSize": 9,
   "regions": [
     {
@@ -24697,7 +24697,7 @@ export const level86: PuzzleData = {
 };
 
 export const level87: PuzzleData = {
-  "level": 87,
+  "level": 82,
   "gridSize": 9,
   "regions": [
     {
@@ -25122,7 +25122,7 @@ export const level87: PuzzleData = {
 };
 
 export const level88: PuzzleData = {
-  "level": 88,
+  "level": 83,
   "gridSize": 9,
   "regions": [
     {
@@ -25547,7 +25547,7 @@ export const level88: PuzzleData = {
 };
 
 export const level89: PuzzleData = {
-  "level": 89,
+  "level": 84,
   "gridSize": 9,
   "regions": [
     {
@@ -25972,7 +25972,7 @@ export const level89: PuzzleData = {
 };
 
 export const level90: PuzzleData = {
-  "level": 90,
+  "level": 85,
   "gridSize": 9,
   "regions": [
     {
@@ -31498,10 +31498,10 @@ export const level100: PuzzleData = {
 
 export const puzzles: PuzzleData[] = [
   level1,
-  level2,
   level3,
   level4,
   level5,
+  level2,
   level6,
   level7,
   level8,
@@ -31522,31 +31522,6 @@ export const puzzles: PuzzleData[] = [
   level23,
   level24,
   level25,
-  level26,
-  level27,
-  level28,
-  level29,
-  level30,
-  level31,
-  level32,
-  level33,
-  level34,
-  level35,
-  level36,
-  level37,
-  level38,
-  level39,
-  level40,
-  level41,
-  level42,
-  level43,
-  level44,
-  level45,
-  level46,
-  level47,
-  level48,
-  level49,
-  level50,
   level51,
   level52,
   level53,
@@ -31557,6 +31532,16 @@ export const puzzles: PuzzleData[] = [
   level58,
   level59,
   level60,
+  level26,
+  level27,
+  level28,
+  level29,
+  level30,
+  level31,
+  level32,
+  level33,
+  level34,
+  level35,
   level61,
   level62,
   level63,
@@ -31567,6 +31552,11 @@ export const puzzles: PuzzleData[] = [
   level68,
   level69,
   level70,
+  level36,
+  level37,
+  level38,
+  level39,
+  level40,
   level71,
   level72,
   level73,
@@ -31577,6 +31567,11 @@ export const puzzles: PuzzleData[] = [
   level78,
   level79,
   level80,
+  level41,
+  level42,
+  level43,
+  level44,
+  level45,
   level81,
   level82,
   level83,
@@ -31587,6 +31582,11 @@ export const puzzles: PuzzleData[] = [
   level88,
   level89,
   level90,
+  level46,
+  level47,
+  level48,
+  level49,
+  level50,
   level91,
   level92,
   level93,

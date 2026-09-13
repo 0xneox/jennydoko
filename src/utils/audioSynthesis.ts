@@ -1,5 +1,5 @@
 /**
- * Procedural Audio Synthesis for Jenny's Puppies
+ * Procedural Audio Synthesis for JennyDoko
  * Generates pure 44.1kHz PCM Float32 audio samples for instant, zero-dependency,
  * high-fidelity playback across Web, Mobile, and Desktop.
  */
@@ -224,5 +224,123 @@ export function generateBgm(): Float32Array {
     samples[i] = samples[i] * factor + samples[numSamples - fadeLength + i] * (1 - factor);
   }
 
+  return samples;
+}
+
+// 7. Cat Purr: Soft, low-frequency rumble with gentle modulation
+export function generateCatPurr(): Float32Array {
+  const duration = 0.6;
+  const numSamples = Math.floor(SAMPLE_RATE * duration);
+  const samples = new Float32Array(numSamples);
+
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / SAMPLE_RATE;
+    const env = Math.sin((t / duration) * Math.PI) * 0.8;
+    // Low rumble at ~25Hz with harmonics
+    const rumble = Math.sin(2 * Math.PI * 25 * t) * 0.5;
+    const harmonic = Math.sin(2 * Math.PI * 50 * t) * 0.3;
+    const breath = (Math.random() * 2 - 1) * 0.1;
+    // Gentle amplitude modulation for the "purr" texture
+    const mod = 1 + Math.sin(2 * Math.PI * 12 * t) * 0.3;
+    samples[i] = (rumble + harmonic + breath) * env * mod * 0.5;
+  }
+  return samples;
+}
+
+// 8. Cat Hiss: Sharp, short noise burst with high-pass character
+export function generateCatHiss(): Float32Array {
+  const duration = 0.25;
+  const numSamples = Math.floor(SAMPLE_RATE * duration);
+  const samples = new Float32Array(numSamples);
+
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / SAMPLE_RATE;
+    const env = Math.exp(-t * 15);
+    // White noise
+    const noise = (Math.random() * 2 - 1);
+    // High-pass via simple differencing
+    const highPass = i > 0 ? noise - samples[i - 1] * 0.85 : noise;
+    samples[i] = highPass * env * 0.6;
+  }
+  return samples;
+}
+
+// 9. Combo Chime: Ascending arpeggio for rapid valid placements
+export function generateComboChime(): Float32Array {
+  const duration = 0.35;
+  const numSamples = Math.floor(SAMPLE_RATE * duration);
+  const samples = new Float32Array(numSamples);
+
+  const notes = [
+    { freq: 659.25, time: 0.00 },   // E5
+    { freq: 783.99, time: 0.06 },   // G5
+    { freq: 1046.50, time: 0.12 },  // C6
+  ];
+
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / SAMPLE_RATE;
+    let val = 0;
+    for (const note of notes) {
+      if (t >= note.time) {
+        const dt = t - note.time;
+        const env = Math.exp(-dt * 10);
+        val += Math.sin(2 * Math.PI * note.freq * dt) * env * 0.3;
+      }
+    }
+    samples[i] = val;
+  }
+  return samples;
+}
+
+// 11. Wrong Move: Soft, friendly two-note "boop-boop" slide — clearly not a
+// success sound, but gentle enough for a five-year-old.
+export function generateWrongBoop(): Float32Array {
+  const duration = 0.32;
+  const numSamples = Math.floor(SAMPLE_RATE * duration);
+  const samples = new Float32Array(numSamples);
+
+  const notes = [
+    { freq: 392.0, time: 0.0, len: 0.13 },  // G4
+    { freq: 311.13, time: 0.15, len: 0.17 }, // Eb4 — a small step down
+  ];
+
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / SAMPLE_RATE;
+    let val = 0;
+    for (const note of notes) {
+      if (t >= note.time && t < note.time + note.len) {
+        const dt = t - note.time;
+        const env = Math.sin((dt / note.len) * Math.PI);
+        // Rounded, woody tone: fundamental + soft 2nd harmonic
+        val += (Math.sin(2 * Math.PI * note.freq * dt) * 0.7 +
+          Math.sin(2 * Math.PI * note.freq * 2 * dt) * 0.2) * env * 0.45;
+      }
+    }
+    samples[i] = val;
+  }
+  return samples;
+}
+
+// 10. Linked Sparkle: Twin shimmer for linked bed connections
+export function generateLinkedSparkle(): Float32Array {
+  const duration = 0.4;
+  const numSamples = Math.floor(SAMPLE_RATE * duration);
+  const samples = new Float32Array(numSamples);
+
+  const freqs = [1318.51, 1567.98, 2093.00]; // E6, G6, C7
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / SAMPLE_RATE;
+    let val = 0;
+    freqs.forEach((freq, idx) => {
+      const startTime = idx * 0.08;
+      if (t >= startTime) {
+        const dt = t - startTime;
+        const env = Math.exp(-dt * 8);
+        const vibrato = Math.sin(2 * Math.PI * 6 * dt) * 10;
+        val += Math.sin(2 * Math.PI * (freq + vibrato) * dt) * env * 0.22;
+      }
+    });
+    samples[i] = val;
+  }
   return samples;
 }

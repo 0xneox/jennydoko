@@ -38,7 +38,7 @@ describe('Puzzle Validation Tests', () => {
     });
   });
 
-  describe('Level 2', () => {
+  describe('Level 2 puzzle object (5x5)', () => {
     it('should have exactly one valid solution', () => {
       const engine = new GameEngine(level2);
       const solutionCount = engine.countValidSolutions();
@@ -52,7 +52,7 @@ describe('Puzzle Validation Tests', () => {
     });
 
     it('should have correct puzzle structure', () => {
-      expect(level2.level).toBe(2);
+      expect(level2.level).toBe(5);
       expect(level2.gridSize).toBe(5);
       expect(level2.regions).toHaveLength(5);
       expect(level2.solution).toHaveLength(5);

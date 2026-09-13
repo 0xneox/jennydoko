@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Animated,
   Share,
   Platform,
@@ -12,6 +11,8 @@ import * as Haptics from 'expo-haptics';
 import { soundManager } from '../utils/soundManager';
 import { PuppyMilestone } from '../utils/storage';
 import { Confetti } from './Confetti';
+import { CandyButton } from './candy/CandyButton';
+import { APP_NAME, CANDY_GOLD } from '../utils/theme';
 
 interface AdoptionModalProps {
   visible: boolean;
@@ -27,6 +28,22 @@ export const AdoptionModal: React.FC<AdoptionModalProps> = ({
   const scaleAnim = useRef(new Animated.Value(0.75)).current;
   const badgeBounce = useRef(new Animated.Value(1)).current;
   const [copiedToast, setCopiedToast] = React.useState(false);
+  const copiedToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear pending toast auto-dismiss when the modal hides or unmounts
+  useEffect(() => {
+    if (!visible) {
+      if (copiedToastTimer.current) {
+        clearTimeout(copiedToastTimer.current);
+        copiedToastTimer.current = null;
+      }
+      setCopiedToast(false);
+    }
+  }, [visible]);
+
+  useEffect(() => () => {
+    if (copiedToastTimer.current) clearTimeout(copiedToastTimer.current);
+  }, []);
 
   useEffect(() => {
     if (visible && milestone) {
@@ -64,14 +81,18 @@ export const AdoptionModal: React.FC<AdoptionModalProps> = ({
       `I just adopted the ${milestone.breedName}!`,
       `Title: ${milestone.badgeTitle}`,
       `"${milestone.quote}"`,
-      `\nPlaying Jenny's Puppies: Cozy Logic Puzzles 🐾`,
+      `\nPlaying ${APP_NAME}: Cozy Logic Puzzles 🐾`,
     ].join('\n');
 
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(shareMessage);
         setCopiedToast(true);
-        setTimeout(() => setCopiedToast(false), 2400);
+        if (copiedToastTimer.current) clearTimeout(copiedToastTimer.current);
+        copiedToastTimer.current = setTimeout(() => {
+          copiedToastTimer.current = null;
+          setCopiedToast(false);
+        }, 2400);
       } else {
         await Share.share({
           message: shareMessage,
@@ -129,6 +150,17 @@ export const AdoptionModal: React.FC<AdoptionModalProps> = ({
           Awarded for completing Chapter {milestone.chapter} (Level {milestone.level})
         </Text>
 
+        {/* New Power Unlocked Ceremony */}
+        {milestone.powerUnlocked && (
+          <View style={styles.powerUnlockedCard}>
+            <Text style={styles.powerUnlockedIcon}>✨</Text>
+            <View style={styles.powerUnlockedContent}>
+              <Text style={styles.powerUnlockedTitle}>NEW POWER UNLOCKED!</Text>
+              <Text style={styles.powerUnlockedText}>{milestone.powerUnlocked}</Text>
+            </View>
+          </View>
+        )}
+
         {/* Share Toast */}
         {copiedToast && (
           <View style={styles.toast}>
@@ -138,25 +170,24 @@ export const AdoptionModal: React.FC<AdoptionModalProps> = ({
 
         {/* Action Buttons */}
         <View style={styles.buttonGroup}>
-          <TouchableOpacity
-              style={[styles.shareButton, { backgroundColor: milestone.color, shadowColor: milestone.color }]}
-              onPress={handleShare}
-              activeOpacity={0.8}
-            >
-            <Text style={styles.shareButtonText}>Share Certificate 📤</Text>
-          </TouchableOpacity>
+          <CandyButton
+            block
+            size="lg"
+            skin="grape"
+            label="Share Certificate 📤"
+            onPress={handleShare}
+          />
 
-          <TouchableOpacity
-            style={styles.continueButton}
+          <CandyButton
+            block
+            skin="green"
+            label="Continue Journey 🌿"
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               soundManager.play('button');
               onClose();
             }}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.continueButtonText}>Continue Journey 🌿</Text>
-          </TouchableOpacity>
+          />
         </View>
       </Animated.View>
     </View>
@@ -170,12 +201,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(28, 26, 24, 0.72)',
+    backgroundColor: 'rgba(14, 6, 32, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
     padding: 20,
   },
+  // Kept as warm "paper" on purpose — it's a certificate — but framed in the
+  // candy gold trim so it reads as part of the arcade theme.
   certificateCard: {
     backgroundColor: '#FFFDF9',
     borderRadius: 24,
@@ -183,13 +216,13 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 380,
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#E6D3A3',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    elevation: 10,
+    borderWidth: 4,
+    borderColor: CANDY_GOLD.base,
+    shadowColor: '#0E0620',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.55,
+    shadowRadius: 22,
+    elevation: 12,
   },
   ornateHeader: {
     paddingVertical: 6,
@@ -264,6 +297,37 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     textAlign: 'center',
   },
+  powerUnlockedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E8F7E',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 18,
+    borderWidth: 2,
+    borderColor: '#7FE9D8',
+    gap: 10,
+    width: '100%',
+  },
+  powerUnlockedIcon: {
+    fontSize: 28,
+  },
+  powerUnlockedContent: {
+    flex: 1,
+  },
+  powerUnlockedTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  powerUnlockedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E0FFF8',
+    lineHeight: 16,
+  },
   toast: {
     backgroundColor: '#2A9D8F',
     paddingVertical: 6,
@@ -279,38 +343,5 @@ const styles = StyleSheet.create({
   buttonGroup: {
     width: '100%',
     gap: 10,
-  },
-  shareButton: {
-    paddingVertical: 14,
-    borderRadius: 18,
-    alignItems: 'center',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  shareButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.1,
-  },
-  continueButton: {
-    backgroundColor: '#FFFBF2',
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#F5DCB7',
-    shadowColor: '#E67E22',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  continueButtonText: {
-    color: '#6E4822',
-    fontSize: 15,
-    fontWeight: '700',
   },
 });

@@ -16,14 +16,16 @@ interface Particle {
   isPaw: boolean;
 }
 
-const PASTEL_CONFETTI_COLORS = [
-  '#9EB897', // Sage Green
-  '#8EAAC7', // Dusty Blue
-  '#F2D382', // Soft Butter
-  '#BBA8CE', // Lavender Mist
-  '#E7A598', // Warm Blush
-  '#D68870', // Terracotta Clay
-  '#D5BDA0', // Oat Cream
+// Bright candy confetti. The muted pastels these replaced were tuned for the
+// old cream canvas and turned muddy against the deep grape backdrop.
+const CANDY_CONFETTI_COLORS = [
+  '#6BEE8C', // Candy Lime
+  '#7FD4FF', // Bubblegum Sky
+  '#FFD84D', // Lemon Drop
+  '#C89BFF', // Grape Fizz
+  '#FF8AB0', // Strawberry Taffy
+  '#FF7A5C', // Orange Sherbet
+  '#FFFFFF', // Sugar Sparkle
 ];
 
 // Little paw print component for confetti particles
@@ -88,6 +90,8 @@ const PawPrint: React.FC<{ color: string; size?: number }> = ({ color, size = 16
 export const Confetti: React.FC<ConfettiProps> = ({ visible }) => {
   const particles = useRef<Particle[]>([]);
   const opacity = useRef(new Animated.Value(0)).current;
+  const particleAnimations = useRef<Animated.CompositeAnimation[]>([]);
+  const fadeAnimation = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -104,10 +108,10 @@ export const Confetti: React.FC<ConfettiProps> = ({ visible }) => {
           rotation: new Animated.Value(0),
           scale: new Animated.Value(0.7 + Math.random() * 0.5),
           color:
-            PASTEL_CONFETTI_COLORS[
-              Math.floor(Math.random() * PASTEL_CONFETTI_COLORS.length)
+            CANDY_CONFETTI_COLORS[
+              Math.floor(Math.random() * CANDY_CONFETTI_COLORS.length)
             ],
-          isPaw: i % 2 === 0, // 50% are cute paw prints, 50% are pastel ribbons
+          isPaw: i % 2 === 0, // 50% are cute paw prints, 50% are candy ribbons
         });
       }
       particles.current = newParticles;
@@ -118,7 +122,7 @@ export const Confetti: React.FC<ConfettiProps> = ({ visible }) => {
         const duration = 2400 + Math.random() * 1200;
         const drift = (Math.random() - 0.5) * 220;
 
-        Animated.parallel([
+        const anim = Animated.parallel([
           Animated.timing(particle.y, {
             toValue: 650 + Math.random() * 200,
             duration,
@@ -134,19 +138,31 @@ export const Confetti: React.FC<ConfettiProps> = ({ visible }) => {
             duration,
             useNativeDriver: true,
           }),
-        ]).start();
+        ]);
+        particleAnimations.current.push(anim);
+        anim.start();
       });
 
       // Fade out after celebration
       const fadeTimeout = setTimeout(() => {
-        Animated.timing(opacity, {
+        const fade = Animated.timing(opacity, {
           toValue: 0,
           duration: 600,
           useNativeDriver: true,
-        }).start();
+        });
+        fadeAnimation.current = fade;
+        fade.start();
       }, 2600);
 
-      return () => clearTimeout(fadeTimeout);
+      return () => {
+        clearTimeout(fadeTimeout);
+        if (fadeAnimation.current) {
+          fadeAnimation.current.stop();
+          fadeAnimation.current = null;
+        }
+        particleAnimations.current.forEach(anim => anim.stop());
+        particleAnimations.current = [];
+      };
     }
   }, [visible, opacity]);
 

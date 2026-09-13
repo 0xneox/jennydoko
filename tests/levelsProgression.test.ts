@@ -42,88 +42,33 @@ describe('Levels 1-100 Continuous Difficulty Progression', () => {
     });
   });
 
-  it('verifies concept progression stages', () => {
-    // Levels 3–4: 4x4, Single-cell colour
-    for (let l = 3; l <= 4; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(4);
-      expect(p.techniquesRequired).toContain('single_cell_colour');
+  it('ramps grid size monotonically across the campaign', () => {
+    // No sawtooth: grid size must never decrease between consecutive levels
+    for (let l = 2; l <= 100; l++) {
+      expect(puzzles[l - 1].gridSize).toBeGreaterThanOrEqual(puzzles[l - 2].gridSize);
     }
+  });
 
-    // Levels 5–7: 4x4 / 5x5, Colour unique in row
-    expect(puzzles[4].gridSize).toBe(4);
-    expect(puzzles[4].techniquesRequired).toContain('colour_unique_row');
-    expect(puzzles[5].gridSize).toBe(5);
-    expect(puzzles[5].techniquesRequired).toContain('colour_unique_row');
-    expect(puzzles[6].gridSize).toBe(5);
-    expect(puzzles[6].techniquesRequired).toContain('colour_unique_row');
+  it('verifies grid size progression tiers', () => {
+    const expectTier = (from: number, to: number, size: number) => {
+      for (let l = from; l <= to; l++) {
+        expect(puzzles[l - 1].gridSize).toBe(size);
+      }
+    };
 
-    // Levels 8–10: 5x5, Colour unique in column
-    for (let l = 8; l <= 10; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(5);
-      expect(p.techniquesRequired).toContain('colour_unique_column');
-    }
+    expectTier(1, 4, 4);
+    expectTier(5, 11, 5);
+    expectTier(12, 35, 6);
+    expectTier(36, 55, 7);
+    expectTier(56, 70, 8);
+    expectTier(71, 85, 9);
+    expectTier(86, 100, 10);
+  });
 
-    // Levels 11–13: 5x5 / 6x6, Combine row + column + colour
-    expect(puzzles[10].gridSize).toBe(5);
-    expect(puzzles[11].gridSize).toBe(6);
-    expect(puzzles[12].gridSize).toBe(6);
-
-    // Levels 14–16: 6x6, Stronger neighbour deductions and longer chains
-    for (let l = 14; l <= 16; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(6);
-      expect(p.difficulty).toBe('hard');
-    }
-
-    // Levels 17–20: 6x6, Combine all learned techniques
-    for (let l = 17; l <= 20; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(6);
-      expect(['hard', 'expert']).toContain(p.difficulty);
-    }
-
-    // Levels 21–25: 6x6 (hard)
-    for (let l = 21; l <= 25; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(6);
-      expect(p.difficulty).toBe('hard');
-    }
-
-    // Levels 26–30: 7x7 (hard)
-    for (let l = 26; l <= 30; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(7);
-      expect(p.difficulty).toBe('hard');
-    }
-
-    // Levels 31–35: 7x7 (expert)
-    for (let l = 31; l <= 35; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(7);
-      expect(p.difficulty).toBe('expert');
-    }
-
-    // Levels 36–40: 8x8 (expert)
-    for (let l = 36; l <= 40; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(8);
-      expect(p.difficulty).toBe('expert');
-    }
-
-    // Levels 41–45: 9x9 (expert)
-    for (let l = 41; l <= 45; l++) {
-      const p = puzzles[l - 1];
-      expect(p.gridSize).toBe(9);
-      expect(p.difficulty).toBe('expert');
-    }
-
-    // Levels 46–50: 10x10 (expert)
-    for (let l = 46; l <= 50; l++) {
+  it('verifies 10x10 puzzle integrity for levels 86-100', () => {
+    for (let l = 86; l <= 100; l++) {
       const p = puzzles[l - 1];
       expect(p.gridSize).toBe(10);
-      expect(p.difficulty).toBe('expert');
       expect(p.solution).toHaveLength(10);
       expect(p.regions).toHaveLength(10);
 

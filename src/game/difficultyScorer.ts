@@ -12,6 +12,7 @@ export class DifficultyScorer {
     region_elimination: 1,
     neighbour_elimination: 1,
     deduction_chain: 5,
+    search_placement: 8,
   };
 
   /**
@@ -69,14 +70,15 @@ export class DifficultyScorer {
   public static estimateDeductionCount(puzzle: PuzzleData): number {
     const engine = new GameEngine(puzzle);
     const board = engine.getState().board;
-    const solver = new PuzzleSolver(board);
+    const quota = puzzle.puppiesPerUnit ?? 1;
+    const solver = new PuzzleSolver(board, { puppiesPerUnit: quota });
 
     let deductionCount = 0;
     let currentBoard = this.cloneBoard(board);
 
     // Simulate solving process
-    while (deductionCount < puzzle.gridSize * 2) {
-      const tempSolver = new PuzzleSolver(currentBoard);
+    while (deductionCount < puzzle.gridSize * quota * 2) {
+      const tempSolver = new PuzzleSolver(currentBoard, { puppiesPerUnit: quota });
       const deductions = tempSolver.findAllDeductions();
 
       if (deductions.length === 0) {

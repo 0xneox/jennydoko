@@ -13,6 +13,8 @@ import * as Haptics from 'expo-haptics';
 import { soundManager } from '../utils/soundManager';
 import { setStorySeen } from '../utils/storage';
 import { JennyAvatar } from './assets/JennyAvatar';
+import { CandyButton } from './candy/CandyButton';
+import { CANDY_GOLD } from '../utils/theme';
 
 interface StoryComicModalProps {
   visible: boolean;
@@ -32,21 +34,21 @@ const COMIC_PAGES: ComicPage[] = [
   {
     chapter: 'Part 1 • Greenbark Meadow',
     headline: 'Jenny is a puppy sitter at Greenbark Meadow.',
-    dialogue: 'Welcome! I’m Jenny. I spend my sunniest days caring for the sweetest pups here in Greenbark Meadow.',
+    dialogue: 'Hi I\'m Jenny !\nSofie brings me to Greenbark Meadow, where I get to play with so many amazing friends !',
     imageSource: require('../../assets/story/story_1_meadow.jpg'),
     highlightColor: '#27AE60',
   },
   {
     chapter: 'Part 2 • The Flower Beds',
     headline: 'The park is vast, and the playful pups love hiding in their favorite colored flower beds!',
-    dialogue: 'Look at them peek! Each pup snuggles into their own color patch—bluebells, purple lavender, golden daisies, and warm poppies.',
+    dialogue: 'We all love these flower beds !\nI like the cheerful daisies, and my friends enjoy the bluebells, lavender and poppies. We always have so much fun together !',
     imageSource: require('../../assets/story/story_2_flowerbeds.jpg'),
     highlightColor: '#8E44AD',
   },
   {
     chapter: 'Part 3 • The Quest',
     headline: 'Can you help Jenny ensure every puppy gets their own sunny spot?',
-    dialogue: 'They love their personal space and need room to stretch! Can you help me guide each pup to their perfect sunny spot across 100 gardens?',
+    dialogue: 'They love their personal space and need room to stretch ! Lets explore together and find the perfect sunny spot for each of us across many gardens !',
     imageSource: require('../../assets/story/story_3_adventure.jpg'),
     highlightColor: '#E67E22',
   },
@@ -255,39 +257,28 @@ export const StoryComicModal: React.FC<StoryComicModalProps> = ({
             {/* Buttons */}
             <View style={styles.actionRow}>
               {/* Always-rendered Back (using opacity to hide on page 0 — avoids mount flicker) */}
-              <TouchableOpacity
+              <CandyButton
+                skin="neutral"
+                label="⬅️ Back"
+                onPress={handlePrev}
+                disabled={currentPage === 0 || isTransitioning}
                 style={[
                   styles.prevButton,
-                  currentPage === 0 && styles.prevButtonDisabled,
+                  currentPage === 0 && styles.prevButtonHidden,
                 ]}
-                onPress={handlePrev}
-                activeOpacity={currentPage === 0 ? 1 : 0.8}
-                disabled={currentPage === 0 || isTransitioning}
-              >
-                <Text
-                  style={[
-                    styles.prevButtonText,
-                    currentPage === 0 && { opacity: 0 },
-                  ]}
-                >
-                  ⬅️ Back
-                </Text>
-              </TouchableOpacity>
+              />
 
-              <TouchableOpacity
+              <CandyButton
+                size="lg"
+                skin={isLastPage ? 'green' : 'grape'}
+                label={isLastPage ? 'Start Adventure! 🐾' : 'Next ➡️'}
+                onPress={handleNext}
+                disabled={isTransitioning}
                 style={[
                   styles.nextButton,
-                  isLastPage ? styles.startButton : { backgroundColor: current.highlightColor },
                   isTransitioning && { opacity: 0.7 },
                 ]}
-                onPress={handleNext}
-                activeOpacity={0.85}
-                disabled={isTransitioning}
-              >
-                <Text style={styles.nextButtonText}>
-                  {isLastPage ? 'Start Adventure! 🐾' : 'Next ➡️'}
-                </Text>
-              </TouchableOpacity>
+              />
             </View>
           </View>
         </Animated.View>
@@ -316,6 +307,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Comic pages stay paper-white by design; the gold frame ties them to the
+  // candy theme without hurting the illustrations' contrast.
   cardContainer: {
     width: '92%',
     maxWidth: 440,
@@ -324,13 +317,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
+    shadowColor: '#0E0620',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.55,
+    shadowRadius: 26,
     elevation: 16,
-    borderWidth: 1.5,
-    borderColor: '#EFE7DB',
+    borderWidth: 4,
+    borderColor: CANDY_GOLD.base,
   },
   headerRow: {
     flexDirection: 'row',
@@ -483,44 +476,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  emptyButtonSpace: {
-    flex: 1,
-  },
   prevButton: {
     flex: 1,
-    backgroundColor: '#EAE2D2',
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: 'center',
   },
-  prevButtonDisabled: {
-    backgroundColor: '#EAE2D2',
-  },
-  prevButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#655342',
+  prevButtonHidden: {
+    opacity: 0,
   },
   nextButton: {
     flex: 1.5,
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  startButton: {
-    backgroundColor: '#27AE60',
-    shadowColor: '#27AE60',
-    shadowOpacity: 0.35,
-  },
-  nextButtonText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
   },
 });

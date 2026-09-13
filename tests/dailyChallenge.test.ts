@@ -55,7 +55,7 @@ describe('Step 3: Daily Challenge System & Streak Mechanics', () => {
 
   describe('Streak Progression & Milestone Rewards', () => {
     it('initiates streak at 1 on first daily completion', async () => {
-      const result = await recordDailyCompletion({ moves: 12, time: 45, hintsUsed: 0 });
+      const result = await recordDailyCompletion({ moves: 12, time: 45 });
 
       expect(result.streak).toBe(1);
       expect(result.isNewRecord).toBe(true);
@@ -113,7 +113,7 @@ describe('Step 3: Daily Challenge System & Streak Mechanics', () => {
 
       const result = await recordDailyCompletion();
       expect(result.streak).toBe(3);
-      expect(result.reward).toBe('Sparkle Hint (+1 Hint) 💡');
+      expect(result.reward).toBe('Sparkle Paw Charm ✨');
 
       const state = await getDailyChallengeState();
       expect(state.rewardsClaimed).toContain(3);

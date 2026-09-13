@@ -9,19 +9,19 @@ export const STORY_PAGES: StoryPageData[] = [
   {
     chapter: 'Part 1 • Greenbark Meadow',
     headline: 'Jenny is a puppy sitter at Greenbark Meadow.',
-    dialogue: 'Welcome! I’m Jenny. I spend my sunniest days caring for the sweetest pups here in Greenbark Meadow.',
+    dialogue: 'Hi I\'m Jenny !\nSofie brings me to Greenbark Meadow, where I get to play with so many amazing friends !',
     highlightColor: '#27AE60',
   },
   {
     chapter: 'Part 2 • The Flower Beds',
     headline: 'The park is vast, and the playful pups love hiding in their favorite colored flower beds!',
-    dialogue: 'Look at them peek! Each pup snuggles into their own color patch—bluebells, purple lavender, golden daisies, and warm poppies.',
+    dialogue: 'We all love these flower beds !\nI like the cheerful daisies, and my friends enjoy the bluebells, lavender and poppies. We always have so much fun together !',
     highlightColor: '#8E44AD',
   },
   {
     chapter: 'Part 3 • The Quest',
     headline: 'Can you help Jenny ensure every puppy gets their own sunny spot?',
-    dialogue: 'They love their personal space and need room to stretch! Can you help me guide each pup to their perfect sunny spot across 100 gardens?',
+    dialogue: 'They love their personal space and need room to stretch ! Lets explore together and find the perfect sunny spot for each of us across many gardens !',
     highlightColor: '#E67E22',
   },
 ];
@@ -41,7 +41,7 @@ export const TUTORIAL_RULES: TutorialRuleData[] = [
   {
     step: 2,
     title: 'Puppies need personal space! They cannot touch—not even diagonally!',
-    explanation: 'See those ✕ marks around the puppy? No other dog can touch this pup, even diagonally. They love their naps undisturbed!',
+    explanation: 'See those paw marks around the puppy? No other dog can touch this pup, even diagonally. They love their naps undisturbed!',
   },
   {
     step: 3,

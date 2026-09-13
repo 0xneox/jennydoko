@@ -1,5 +1,5 @@
 import {
-  NORDIC_PASTEL_PALETTE,
+  RAINBOW_CANDY_PALETTE,
   getRegionTheme,
   getRegionColor,
   getRegionBorderColor,
@@ -7,26 +7,26 @@ import {
 } from '../src/utils/colors';
 
 describe('Sprint 3: Visual Identity & Bespoke Cozy Art System', () => {
-  describe('Nordic / Cozy Pastel Palette', () => {
-    it('defines 10 distinct, eye-friendly pastel themes', () => {
-      expect(NORDIC_PASTEL_PALETTE).toHaveLength(10);
+  describe('Rainbow Candy Palette', () => {
+    it('defines 10 distinct, vibrant rainbow themes', () => {
+      expect(RAINBOW_CANDY_PALETTE).toHaveLength(10);
 
-      const names = NORDIC_PASTEL_PALETTE.map(t => t.name);
-      expect(names).toContain('Sage Green');
-      expect(names).toContain('Dusty Blue');
-      expect(names).toContain('Soft Butter');
-      expect(names).toContain('Lavender Mist');
-      expect(names).toContain('Terracotta Clay');
-      expect(names).toContain('Warm Blush');
-      expect(names).toContain('Forest Pine');
-      expect(names).toContain('Oat Cream');
-      expect(names).toContain('Heather Plum');
-      expect(names).toContain('Fjord Denim');
+      const names = RAINBOW_CANDY_PALETTE.map(t => t.name);
+      expect(names).toContain('Red');
+      expect(names).toContain('Pink');
+      expect(names).toContain('Orange');
+      expect(names).toContain('Yellow');
+      expect(names).toContain('Green');
+      expect(names).toContain('Cyan');
+      expect(names).toContain('Blue');
+      expect(names).toContain('Indigo');
+      expect(names).toContain('Violet');
+      expect(names).toContain('Magenta');
     });
 
     it('each theme contains valid hex strings for pastel, border, darkContrast, and accent', () => {
       const hexRegex = /^#([A-Fa-f0-9]{6})$/;
-      NORDIC_PASTEL_PALETTE.forEach(theme => {
+      RAINBOW_CANDY_PALETTE.forEach(theme => {
         expect(theme.pastel).toMatch(hexRegex);
         expect(theme.border).toMatch(hexRegex);
         expect(theme.darkContrast).toMatch(hexRegex);
@@ -35,7 +35,7 @@ describe('Sprint 3: Visual Identity & Bespoke Cozy Art System', () => {
     });
 
     it('all 10 pastel colors are unique to prevent ambiguity between regions', () => {
-      const pastels = NORDIC_PASTEL_PALETTE.map(t => t.pastel.toLowerCase());
+      const pastels = RAINBOW_CANDY_PALETTE.map(t => t.pastel.toLowerCase());
       const uniquePastels = new Set(pastels);
       expect(uniquePastels.size).toBe(10);
     });
@@ -48,7 +48,7 @@ describe('Sprint 3: Visual Identity & Bespoke Cozy Art System', () => {
         return 0.2126 * r + 0.7152 * g + 0.0722 * b;
       };
 
-      NORDIC_PASTEL_PALETTE.forEach(theme => {
+      RAINBOW_CANDY_PALETTE.forEach(theme => {
         const pastelLum = hexToLuminance(theme.pastel);
         const borderLum = hexToLuminance(theme.border);
         const darkLum = hexToLuminance(theme.darkContrast);
@@ -61,14 +61,22 @@ describe('Sprint 3: Visual Identity & Bespoke Cozy Art System', () => {
     });
 
     it('getRegionColor maps regionId safely and cyclically', () => {
-      expect(getRegionColor(1)).toBe(NORDIC_PASTEL_PALETTE[0].pastel);
-      expect(getRegionColor(2)).toBe(NORDIC_PASTEL_PALETTE[1].pastel);
-      expect(getRegionColor(11)).toBe(NORDIC_PASTEL_PALETTE[0].pastel); // wraps around
+      expect(getRegionColor(1)).toBe(RAINBOW_CANDY_PALETTE[0].pastel);
+      expect(getRegionColor(2)).toBe(RAINBOW_CANDY_PALETTE[5].pastel);
+      expect(getRegionColor(11)).toBe(RAINBOW_CANDY_PALETTE[0].pastel); // wraps around
+    });
+
+    it('consecutive region ids always map to distinct hues (stride permutation)', () => {
+      for (let id = 1; id < 10; id++) {
+        expect(getRegionColor(id)).not.toBe(getRegionColor(id + 1));
+      }
+      const firstFour = new Set([1, 2, 3, 4].map(getRegionColor));
+      expect(firstFour.size).toBe(4);
     });
 
     it('getRegionBorderColor maps correctly', () => {
-      expect(getRegionBorderColor(1)).toBe(NORDIC_PASTEL_PALETTE[0].border);
-      expect(getRegionBorderColor(5)).toBe(NORDIC_PASTEL_PALETTE[4].border);
+      expect(getRegionBorderColor(1)).toBe(RAINBOW_CANDY_PALETTE[0].border);
+      expect(getRegionBorderColor(5)).toBe(RAINBOW_CANDY_PALETTE[3].border);
     });
 
     it('returns parchment fallback theme for undefined or 0 regionId', () => {

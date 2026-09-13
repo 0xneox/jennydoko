@@ -1,42 +1,69 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Animated,
   Share,
   Platform,
+  Image,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGameStore } from '../store/gameStore';
 import { Board } from '../components/Board';
+import { CandyBackground } from '../components/candy/CandyBackground';
+import { CandyButton } from '../components/candy/CandyButton';
+import { CandyPanel } from '../components/candy/CandyPanel';
+import {
+  APP_NAME,
+  CANDY_GOLD,
+  CANDY_SURFACE,
+  CANDY_TEXT,
+  CANDY_METRICS,
+} from '../utils/theme';
 import { Confetti } from '../components/Confetti';
 import { SettingsModal } from '../components/SettingsModal';
+import { HintButton } from '../components/HintButton';
+import { MechanicIntroTutorial, MechanicType } from '../components/MechanicIntroTutorial';
+import { ChapterStoryModal } from '../components/ChapterStoryModal';
 import { PuppySprite } from '../components/assets/PuppySprite';
-import { ChalkMarkSprite } from '../components/assets/ChalkMarkSprite';
+
+const PAW_IMAGE = require('../../assets/paw.png');
+const JENNY_PUPPY_IMAGE = require('../../assets/jennyim.png');
 import * as Haptics from 'expo-haptics';
 import {
   setTutorialSeen,
+  getTutorialSeen,
   PuppyMilestone,
   PUPPY_MILESTONES,
   loadClaimedAdoptions,
   saveClaimedAdoptions,
+  getMechanicIntrosSeen,
+  getChapterStoriesSeen,
 } from '../utils/storage';
 import { soundManager } from '../utils/soundManager';
-import { recordLevelCompletion, getLevelStats } from '../utils/statistics';
+import { recordLevelCompletion } from '../utils/statistics';
 import { getLevelDifficulty, getDifficultyColor, getDifficultyLabel } from '../utils/levelHelpers';
+import { getChapterForLevel } from '../data/chapterData';
+import { getChapterStory, CHAPTERS_WITH_STORIES, ChapterStory } from '../data/chapterStories';
 import { JennyAvatar, JennyMood } from '../components/assets/JennyAvatar';
 import { InteractiveTutorial } from '../components/InteractiveTutorial';
 import { JENNY_CHEERS } from '../data/storyLore';
 import {
   recordDailyCompletion,
-  getFormattedTodayDisplay,
   generateDailyShareText,
 } from '../utils/dailyChallenge';
 import { AdoptionModal } from '../components/AdoptionModal';
-import { CHAPTERS } from '../data/chapterData';
 
+// Fixed width for the control columns flanking the board — the widest item is
+// the HintButton ("Show cell" ≈ 130px). Fixed columns keep the board centered
+// and make the fits-on-screen check below exact.
+const SIDE_CONTROLS_WIDTH = 140;
+const BOARD_ROW_GAP = 10;
+// Horizontal chrome the Board tray adds around the grid (2 × GRID_OFFSET).
+const TRAY_FRAME_WIDTH = 36;
 
 export const GameScreen: React.FC = () => {
   const {
@@ -45,7 +72,6 @@ export const GameScreen: React.FC = () => {
     moves,
     isComplete,
     currentLevel,
-    unlockedLevels,
     initializeLevel,
     setActiveScreen,
     placePuppy,
@@ -55,22 +81,30 @@ export const GameScreen: React.FC = () => {
     keepLooking,
     lastWrongCell,
     setLastWrongCell,
-    hintsUsed,
     mistakes,
     isGameOver,
     gameMode,
     setGameMode,
     isDailyChallenge,
+    mechanics,
+    lastMistakeForgiven,
+    hintsUsed,
+    activeHint,
+    hintMessage,
+    requestHint,
   } = useGameStore();
 
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  // Fill the available space instead of using fixed sizes, so a 10x10 board is
+  // just as tappable as a 4x4 one. Chrome allowances: screen padding + tray
+  // frame horizontally, and nav + stats + mode switcher + controls vertically.
   const calcCellSize = (gridSize: number) => {
-    if (gridSize >= 10) return 30;
-    if (gridSize === 9) return 33;
-    if (gridSize === 8) return 38;
-    if (gridSize === 7) return 42;
-    if (gridSize === 6) return 48;
-    if (gridSize === 5) return 56;
-    return 64;
+    const usableWidth = Math.min(screenWidth, 560) - 32 - 36;
+    const usableHeight = screenHeight - 380;
+    const size = Math.floor(Math.min(usableWidth, usableHeight) / gridSize);
+    return Math.max(26, Math.min(74, size));
   };
 
   const [cellSize, setCellSize] = useState<number>(() => calcCellSize(board.gridSize));
@@ -78,11 +112,8 @@ export const GameScreen: React.FC = () => {
   const [lastTap, setLastTap] = useState<{ row: number; col: number; time: number } | null>(null);
   const [lastPlacedPuppy, setLastPlacedPuppy] = useState<{ row: number; col: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [inputMode, setInputMode] = useState<'puppy' | 'mark'>('puppy');
+  const [inputMode, setInputMode] = useState<'puppy' | 'mark'>('mark');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showLevelSelectModal, setShowLevelSelectModal] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(soundManager.isEnabled());
-  const [selectedChapter, setSelectedChapter] = useState(0);
   const [dailyResult, setDailyResult] = useState<{
     streak: number;
     isNewRecord: boolean;
@@ -92,7 +123,7 @@ export const GameScreen: React.FC = () => {
   // Emotional Personality & Milestone States
   const [jennyMood, setJennyMood] = useState<JennyMood>('friendly');
   const [pawfectResult, setPawfectResult] = useState<{
-    stars: 1 | 2 | 3;
+    stars: number;
     label: string;
     subtext: string;
   }>({
@@ -104,7 +135,32 @@ export const GameScreen: React.FC = () => {
   const [shareToast, setShareToast] = useState(false);
 
   // Wrong Move Feedback State
-  const [wrongMoveToast, setWrongMoveToast] = useState<string | null>(null);
+  const [wrongMoveToast, setWrongMoveToast] = useState<{ title: string; sub: string } | null>(null);
+
+  // Hint speech bubble + restart confirmation
+  const [hintBubble, setHintBubble] = useState<string | null>(null);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+
+  // Mechanic intro tutorial (cats, linked, twin)
+  const [activeMechanicIntro, setActiveMechanicIntro] = useState<MechanicType | null>(null);
+
+  // Chapter intro story modal (fires on first entry to mechanic debut chapters)
+  const [activeChapterStory, setActiveChapterStory] = useState<ChapterStory | null>(null);
+
+  // Cat aura: show red glow around cats for 1.5s at level start
+  const [showCatAura, setShowCatAura] = useState(false);
+  const catAuraTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Linked bed pulse: when a cell in a linked region is tapped, the twin glows
+  const [linkedPulseRegionId, setLinkedPulseRegionId] = useState<number | null>(null);
+  const linkedPulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Combo counter: rapid valid placements
+  const [comboCount, setComboCount] = useState(0);
+  const [comboToast, setComboToast] = useState<string | null>(null);
+  const comboTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const comboToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPlacementTime = useRef(0);
 
   // Completion Modal State
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -114,7 +170,6 @@ export const GameScreen: React.FC = () => {
 
   // Statistics tracking
   const levelStartTime = useRef<number>(Date.now());
-  const [levelBestStats, setLevelBestStats] = useState<{ bestMoves: number; bestTime: number } | null>(null);
 
   // Animations
   const screenFadeAnim = useRef(new Animated.Value(0)).current;
@@ -122,22 +177,58 @@ export const GameScreen: React.FC = () => {
   const heartScaleAnim = useRef(new Animated.Value(1)).current;
   const toastFadeAnim = useRef(new Animated.Value(0)).current;
   const completionScaleAnim = useRef(new Animated.Value(0.85)).current;
+  const shimmerAnim = useRef(new Animated.Value(0.3)).current;
   const prevHearts = useRef(hearts);
   const isFirstLevelLoad = useRef(true);
 
+  // Loading shimmer animation — shown during level transitions
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shimmerAnim]);
+
+  // Timer refs — every delayed callback is tracked so it can be cancelled on
+  // unmount and re-triggered cleanly on rapid repeat events.
+  const isMountedRef = useRef(true);
+  const moodResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const milestoneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shareToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrongToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrongCellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hintBubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cancel all pending timeouts on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    const timers = [moodResetTimer, milestoneTimer, shareToastTimer, wrongToastTimer, wrongCellTimer, hintBubbleTimer, catAuraTimer, linkedPulseTimer, comboTimer, comboToastTimer];
+    return () => {
+      isMountedRef.current = false;
+      timers.forEach(ref => {
+        if (ref.current) {
+          clearTimeout(ref.current);
+          ref.current = null;
+        }
+      });
+    };
+  }, []);
+
   // Atomic level initialization + tutorial pre-check — renders all-at-once via isReady
   useEffect(() => {
-    let cancelled = false;
-
     // Hide UI immediately on level change so we don't paint stale / transitioning content
     if (!isFirstLevelLoad.current) {
       setIsReady(false);
     }
 
-    // Single-source init:
-    // - First load and Daily Challenge: state was pre-populated atomically by startDailyChallenge()
-    // - First load normal / any internal level swap: generate fresh puzzle now
-    const skipInit = isFirstLevelLoad.current && isDailyChallenge;
+    // First mount: state was already populated atomically by startLevel() /
+    // startDailyChallenge() — re-initializing would regenerate the puzzle a
+    // second time (and on Level 1 produce a *different* random transform).
+    const skipInit = isFirstLevelLoad.current;
     if (!skipInit) {
       initializeLevel(currentLevel);
     }
@@ -148,68 +239,125 @@ export const GameScreen: React.FC = () => {
     setIsDragging(false);
     setJennyMood('friendly');
     setShareToast(false);
+    // Paw Mark is the default tool on every level start — marking candidates
+    // first is the intended solve flow; Puppy is the explicit commitment.
+    setInputMode('mark');
+    setLastTap(null);
 
     levelStartTime.current = Date.now();
 
-    // Tutorial rules are NO LONGER auto-shown on Level 1 start.
-    // They remain accessible manually via the ? toolbar / Settings.
+    // Auto-trigger Level 1 tutorial for brand-new players, or mechanic intros
+    // when a new mechanic first appears. Both check persistent storage so they
+    // only fire once per device.
     setShowTutorial(false);
-
-    const preloadStats = getLevelStats(currentLevel);
-
-    Promise.all([preloadStats]).then(([stats]) => {
-      if (cancelled) return;
-
-      // Set best stats before render so they appear on first paint
-      setLevelBestStats(stats || null);
-
-      // Immediately correct cell size after initializeLevel mutated board.gridSize
-      setCellSize(calcCellSize(board.gridSize));
-
-      // Flip render gate ONCE — everything shows together
-      setIsReady(true);
-
-      // Now play the enter animation
-      if (isFirstLevelLoad.current) {
-        isFirstLevelLoad.current = false;
-        screenFadeAnim.setValue(1);
-        screenSlideAnim.setValue(0);
-      } else {
-        screenFadeAnim.setValue(0);
-        screenSlideAnim.setValue(12);
-        Animated.parallel([
-          Animated.timing(screenFadeAnim, {
-            toValue: 1,
-            duration: 220,
-            useNativeDriver: true,
-          }),
-          Animated.timing(screenSlideAnim, {
-            toValue: 0,
-            duration: 220,
-            useNativeDriver: true,
-          }),
-        ]).start();
+    setActiveMechanicIntro(null);
+    setActiveChapterStory(null);
+    if (currentLevel === 1) {
+      getTutorialSeen().then(seen => {
+        if (!seen && isMountedRef.current) setShowTutorial(true);
+      }).catch(() => {});
+    } else {
+      // Check for chapter intro story on mechanic debut chapters
+      const chapter = getChapterForLevel(currentLevel);
+      if (CHAPTERS_WITH_STORIES.has(chapter.id)) {
+        getChapterStoriesSeen().then(seen => {
+          if (!isMountedRef.current) return;
+          if (!seen.includes(chapter.id)) {
+            const story = getChapterStory(chapter.id);
+            if (story) setActiveChapterStory(story);
+          }
+        }).catch(() => {});
       }
-    });
 
-    return () => {
-      cancelled = true;
-    };
+      // Check for new mechanic intros (cats, linked, twin)
+      const needsCats = mechanics.catCount > 0;
+      const needsLinked = mechanics.linkedCount > 0;
+      const needsTwin = mechanics.puppiesPerUnit > 1;
+      if (needsCats || needsLinked || needsTwin) {
+        getMechanicIntrosSeen().then(seen => {
+          if (!isMountedRef.current) return;
+          if (needsCats && !seen.includes('cats')) {
+            setActiveMechanicIntro('cats');
+          } else if (needsLinked && !seen.includes('linked')) {
+            setActiveMechanicIntro('linked');
+          } else if (needsTwin && !seen.includes('twin')) {
+            setActiveMechanicIntro('twin');
+          }
+        }).catch(() => {});
+      }
+    }
+
+    // Clear any stale hint bubble on level change
+    setHintBubble(null);
+    setComboCount(0);
+    setComboToast(null);
+
+    // Cat aura: show red glow around cats for 1.5s at level start
+    setShowCatAura(false);
+    if (mechanics.catCount > 0) {
+      setShowCatAura(true);
+      if (catAuraTimer.current) clearTimeout(catAuraTimer.current);
+      catAuraTimer.current = setTimeout(() => {
+        catAuraTimer.current = null;
+        if (isMountedRef.current) setShowCatAura(false);
+      }, 1500);
+    }
+
+    // Linked bed sparkle SFX on board load
+    if (mechanics.linkedCount > 0) {
+      if (linkedPulseTimer.current) clearTimeout(linkedPulseTimer.current);
+      linkedPulseTimer.current = setTimeout(() => {
+        linkedPulseTimer.current = null;
+        if (isMountedRef.current) soundManager.play('linkedSparkle');
+      }, 300);
+    }
+
+    // Immediately correct cell size after initializeLevel mutated board.gridSize
+    setCellSize(calcCellSize(board.gridSize));
+
+    // Flip render gate ONCE — everything shows together
+    setIsReady(true);
+
+    // Now play the enter animation
+    if (isFirstLevelLoad.current) {
+      isFirstLevelLoad.current = false;
+      screenFadeAnim.setValue(1);
+      screenSlideAnim.setValue(0);
+    } else {
+      screenFadeAnim.setValue(0);
+      screenSlideAnim.setValue(12);
+      Animated.parallel([
+        Animated.timing(screenFadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(screenSlideAnim, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
   }, [currentLevel, initializeLevel, screenFadeAnim, screenSlideAnim]);
 
-  // Adjust cell size dynamically when grid changes (e.g. internal level swap edge-case)
+  // Recompute cell size when the grid changes or the viewport resizes (rotation)
   useEffect(() => {
     setCellSize(prev => {
       const next = calcCellSize(board.gridSize);
       return next === prev ? prev : next;
     });
-  }, [board.gridSize]);
+  }, [board.gridSize, screenWidth, screenHeight]);
 
   // Heart decrease animation & sympathetic mood
   useEffect(() => {
     if (hearts < prevHearts.current) {
       setJennyMood('sympathetic');
-      setTimeout(() => setJennyMood('friendly'), 2200);
+      if (moodResetTimer.current) clearTimeout(moodResetTimer.current);
+      moodResetTimer.current = setTimeout(() => {
+        moodResetTimer.current = null;
+        setJennyMood('friendly');
+      }, 2200);
 
       Animated.sequence([
         Animated.timing(heartScaleAnim, { toValue: 1.35, duration: 120, useNativeDriver: true }),
@@ -219,54 +367,90 @@ export const GameScreen: React.FC = () => {
     prevHearts.current = hearts;
   }, [hearts, heartScaleAnim]);
 
+  // Hint speech bubble — Jenny explains the rule, or suggests recovery
+  useEffect(() => {
+    if (hintBubbleTimer.current) {
+      clearTimeout(hintBubbleTimer.current);
+      hintBubbleTimer.current = null;
+    }
+    if (activeHint) {
+      setHintBubble(activeHint.explanation);
+    } else if (hintMessage) {
+      setHintBubble(hintMessage);
+    } else {
+      setHintBubble(null);
+      return;
+    }
+    hintBubbleTimer.current = setTimeout(() => {
+      hintBubbleTimer.current = null;
+      if (isMountedRef.current) setHintBubble(null);
+    }, 6000);
+  }, [activeHint, hintMessage]);
+
   // Completion sequence
   useEffect(() => {
-    if (isComplete) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      soundManager.play('complete');
+    if (!isComplete) return;
+    let cancelled = false;
 
-      // Record statistics and calculate paw-fect star rating
-      const completionTime = Math.floor((Date.now() - levelStartTime.current) / 1000);
-      recordLevelCompletion(currentLevel, moves, completionTime, hintsUsed, hearts)
-        .then(result => {
-          setPawfectResult(result);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    soundManager.play('complete');
+
+    // Record statistics and calculate paw-fect star rating
+    const completionTime = Math.floor((Date.now() - levelStartTime.current) / 1000);
+    recordLevelCompletion(currentLevel, moves, completionTime, hearts, hintsUsed, {
+      mistakes,
+      zen: gameMode === 'zen',
+    })
+      .then(result => {
+        if (!cancelled) setPawfectResult(result);
+      })
+      .catch(() => {});
+
+    if (isDailyChallenge) {
+      recordDailyCompletion({ moves, time: completionTime })
+        .then(res => {
+          if (!cancelled) setDailyResult(res);
         })
         .catch(() => {});
-
-      if (isDailyChallenge) {
-        recordDailyCompletion({ moves, time: completionTime, hintsUsed })
-          .then(res => setDailyResult(res))
-          .catch(() => {});
-      } else {
-        // Check milestone adoption reward
-        const milestone = PUPPY_MILESTONES.find(m => m.level === currentLevel);
-        if (milestone) {
-          loadClaimedAdoptions().then(claimed => {
-            if (!claimed.includes(currentLevel)) {
-              saveClaimedAdoptions([...claimed, currentLevel]);
-              setTimeout(() => {
-                setActiveMilestone(milestone);
-              }, 700);
-            }
-          });
-        }
+    } else {
+      // Check milestone adoption reward
+      const milestone = PUPPY_MILESTONES.find(m => m.level === currentLevel);
+      if (milestone) {
+        loadClaimedAdoptions().then(claimed => {
+          if (cancelled) return;
+          if (!claimed.includes(currentLevel)) {
+            saveClaimedAdoptions([...claimed, currentLevel]);
+            milestoneTimer.current = setTimeout(() => {
+              milestoneTimer.current = null;
+              if (!cancelled) setActiveMilestone(milestone);
+            }, 700);
+          }
+        }).catch(() => {});
       }
-
-      // Small celebratory delay before showing completion popup
-      const timer = setTimeout(() => {
-        setShowCompletionModal(true);
-        setLastPlacedPuppy(null);
-        completionScaleAnim.setValue(0.8);
-        Animated.spring(completionScaleAnim, {
-          toValue: 1,
-          friction: 5,
-          tension: 70,
-          useNativeDriver: true,
-        }).start();
-      }, 500);
-      return () => clearTimeout(timer);
     }
-  }, [isComplete, completionScaleAnim, currentLevel, moves, hintsUsed, hearts, isDailyChallenge]);
+
+    // Small celebratory delay before showing completion popup
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      setShowCompletionModal(true);
+      setLastPlacedPuppy(null);
+      completionScaleAnim.setValue(0.8);
+      Animated.spring(completionScaleAnim, {
+        toValue: 1,
+        friction: 5,
+        tension: 70,
+        useNativeDriver: true,
+      }).start();
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (milestoneTimer.current) {
+        clearTimeout(milestoneTimer.current);
+        milestoneTimer.current = null;
+      }
+    };
+  }, [isComplete, completionScaleAnim, currentLevel, moves, hearts, isDailyChallenge, hintsUsed]);
 
   const handleShareDaily = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -277,7 +461,6 @@ export const GameScreen: React.FC = () => {
       moves,
       timeSeconds: completionTime,
       heartsLeft: hearts,
-      hintsUsed,
       gridSize: board.gridSize,
     });
 
@@ -285,11 +468,15 @@ export const GameScreen: React.FC = () => {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(shareText);
         setShareToast(true);
-        setTimeout(() => setShareToast(false), 2400);
+        if (shareToastTimer.current) clearTimeout(shareToastTimer.current);
+        shareToastTimer.current = setTimeout(() => {
+          shareToastTimer.current = null;
+          setShareToast(false);
+        }, 2400);
       } else {
         await Share.share({
           message: shareText,
-          title: "Jenny's Garden Daily Walk",
+          title: `${APP_NAME} Daily Walk`,
         });
       }
     } catch {
@@ -297,12 +484,22 @@ export const GameScreen: React.FC = () => {
     }
   };
 
-  const showWrongFeedback = (row: number, col: number) => {
+  const showWrongFeedback = (row: number, col: number, override?: { title: string; sub: string }) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     soundManager.play('wrong');
-    setWrongMoveToast("Not quite! That puppy can't go there.");
+    const { lastMistakeForgiven, gameMode, mistakes: made } = useGameStore.getState();
+    const msg = override ?? (lastMistakeForgiven
+      ? gameMode === 'zen'
+        ? { title: 'Not quite!', sub: 'Zen mode is forgiving — try another spot.' }
+        : { title: 'No worries! 💕', sub: `${Math.max(0, 3 - made)} oops left — try again.` }
+      : { title: 'Not quite!', sub: "That puppy can't go there." });
+    setWrongMoveToast(msg);
     setJennyMood('sympathetic');
-    setTimeout(() => setJennyMood('friendly'), 2200);
+    if (moodResetTimer.current) clearTimeout(moodResetTimer.current);
+    moodResetTimer.current = setTimeout(() => {
+      moodResetTimer.current = null;
+      setJennyMood('friendly');
+    }, 2200);
 
     toastFadeAnim.setValue(0);
     Animated.timing(toastFadeAnim, {
@@ -312,18 +509,22 @@ export const GameScreen: React.FC = () => {
     }).start();
 
     // Auto-dismiss toast
-    setTimeout(() => {
+    if (wrongToastTimer.current) clearTimeout(wrongToastTimer.current);
+    wrongToastTimer.current = setTimeout(() => {
+      wrongToastTimer.current = null;
       Animated.timing(toastFadeAnim, {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
       }).start(() => {
-        setWrongMoveToast(null);
+        if (isMountedRef.current) setWrongMoveToast(null);
       });
     }, 1800);
 
     // Clear wrong cell shaking state
-    setTimeout(() => {
+    if (wrongCellTimer.current) clearTimeout(wrongCellTimer.current);
+    wrongCellTimer.current = setTimeout(() => {
+      wrongCellTimer.current = null;
       setLastWrongCell(null);
     }, 1000);
   };
@@ -331,21 +532,99 @@ export const GameScreen: React.FC = () => {
 
   const DOUBLE_TAP_MAX_DELAY = 400; // ms – expanded to comfortably capture natural double-taps (320-380ms)
 
+  // Check if a cell is adjacent to a cat (for purr SFX on placement)
+  const isAdjacentToCat = (row: number, col: number): boolean => {
+    const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+    for (const [dr, dc] of dirs) {
+      const nr = row + dr, nc = col + dc;
+      if (board.cells[nr]?.[nc]?.value === 'cat') return true;
+    }
+    return false;
+  };
+
+  // Trigger linked bed pulse: when tapping a cell in a linked region, glow the twin
+  const triggerLinkedPulse = (row: number, col: number) => {    const region = board.regions.find(r =>
+      r.cells.some(c => c.row === row && c.col === col)
+    );
+    if (!region || !region.linked && region.cells.length <= 1) return;
+    // Only pulse for actual linked regions (non-contiguous)
+    const cellSet = new Set(region.cells.map(c => `${c.row},${c.col}`));
+    const visited = new Set<string>([`${region.cells[0].row},${region.cells[0].col}`]);
+    const queue = [region.cells[0]];
+    while (queue.length > 0) {
+      const cur = queue.pop()!;
+      for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+        const key = `${cur.row + dr},${cur.col + dc}`;
+        if (cellSet.has(key) && !visited.has(key)) {
+          visited.add(key);
+          queue.push({ row: cur.row + dr, col: cur.col + dc });
+        }
+      }
+    }
+    if (visited.size === region.cells.length) return; // contiguous, not linked
+    setLinkedPulseRegionId(region.id);
+    soundManager.play('linkedSparkle');
+    if (linkedPulseTimer.current) clearTimeout(linkedPulseTimer.current);
+    linkedPulseTimer.current = setTimeout(() => {
+      linkedPulseTimer.current = null;
+      setLinkedPulseRegionId(null);
+    }, 900);
+  };
+
+  // Combo counter: track rapid valid placements (within 2.5s of each other)
+  const trackCombo = () => {
+    const now = Date.now();
+    const isRapid = now - lastPlacementTime.current < 2500;
+    const newCount = isRapid ? comboCount + 1 : 1;
+    lastPlacementTime.current = now;
+
+    if (newCount >= 2) {
+      setComboCount(newCount);
+      setComboToast(`Pup chain ×${newCount}!`);
+      soundManager.play('combo');
+      if (comboToastTimer.current) clearTimeout(comboToastTimer.current);
+      comboToastTimer.current = setTimeout(() => {
+        comboToastTimer.current = null;
+        if (isMountedRef.current) setComboToast(null);
+      }, 1800);
+    } else {
+      setComboCount(1);
+    }
+
+    // Reset combo if no placement within 2.5s
+    if (comboTimer.current) clearTimeout(comboTimer.current);
+    comboTimer.current = setTimeout(() => {
+      comboTimer.current = null;
+      setComboCount(0);
+    }, 2500);
+  };
+
   const handleCellPress = (row: number, col: number) => {
     if (isGameOver || isComplete || isDragging) return;
+
+    // Grumpy cats are untappable in every mode — teach the rule instantly
+    if (board.cells[row]?.[col]?.value === 'cat') {
+      soundManager.play('catHiss');
+      showWrongFeedback(row, col, { title: '😾 Grumpy cat!', sub: 'Give it space — no puppies next to a cat.' });
+      return;
+    }
 
     const now = Date.now();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+    // Trigger linked bed pulse on tap
+    triggerLinkedPulse(row, col);
+
     if (lastTap && lastTap.row === row && lastTap.col === col && now - lastTap.time < DOUBLE_TAP_MAX_DELAY) {
-      if (board.cells[row]?.[col]?.value === 'marked') {
-        undo();
-      }
+      // Double-tap commits a puppy. The engine overwrites a Paw Mark directly,
+      // so no undo() here — it would revert whatever the *previous* move was.
       const success = placePuppy(row, col);
       if (!success) {
         showWrongFeedback(row, col);
       } else {
         soundManager.play('placePuppy');
+        if (isAdjacentToCat(row, col)) setTimeout(() => soundManager.play('catPurr'), 200);
+        trackCombo();
         setLastPlacedPuppy({ row, col });
       }
       setLastTap(null);
@@ -358,6 +637,8 @@ export const GameScreen: React.FC = () => {
         showWrongFeedback(row, col);
       } else {
         soundManager.play('placePuppy');
+        if (isAdjacentToCat(row, col)) setTimeout(() => soundManager.play('catPurr'), 200);
+        trackCombo();
         setLastPlacedPuppy({ row, col });
       }
       setLastTap({ row, col, time: now });
@@ -384,38 +665,27 @@ export const GameScreen: React.FC = () => {
     setIsDragging(false);
   };
 
-  const handleUndo = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    soundManager.play('undo');
-    undo();
-    setLastPlacedPuppy(null);
-    setIsDragging(false);
-  };
-
   const handleRestart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     soundManager.play('button');
     restart();
     setShowCompletionModal(false);
+    setShowRestartConfirm(false);
     setWrongMoveToast(null);
     setLastPlacedPuppy(null);
     setIsDragging(false);
+    setHintBubble(null);
+  };
+
+  const handleHintPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    soundManager.play('hint');
+    requestHint();
   };
 
   const handleTutorialClose = () => {
     setShowTutorial(false);
     setTutorialSeen(true);
-  };
-
-  const handleLevelSelect = (level: number) => {
-    if (level <= unlockedLevels) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setLastPlacedPuppy(null);
-      setIsDragging(false);
-      initializeLevel(level);
-      setShowLevelSelectModal(false);
-      setShowSettingsModal(false);
-    }
   };
 
   const handleNextLevel = () => {
@@ -429,17 +699,70 @@ export const GameScreen: React.FC = () => {
     }
   };
 
+  const boardTrayWidth = board.gridSize * cellSize + TRAY_FRAME_WIDTH;
+  // Flank the board only when the whole row fits inside the content width —
+  // on phones the side columns would clip off-screen, so they stack below.
+  const flankControls =
+    boardTrayWidth + 2 * (SIDE_CONTROLS_WIDTH + BOARD_ROW_GAP) <= screenWidth - 32;
+
+  const undoRestartButtons = (
+    <>
+      <CandyButton
+        skin="grape"
+        size="sm"
+        disabled={isGameOver || isComplete || moves === 0}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          soundManager.play('undo');
+          undo();
+        }}
+        style={styles.boardSideButton}
+        accessibilityLabel="Undo last move"
+      >
+        <Text style={styles.controlIcon}>↩️</Text>
+      </CandyButton>
+      <CandyButton
+        skin="grape"
+        size="sm"
+        disabled={isGameOver || isComplete}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          soundManager.play('button');
+          setShowRestartConfirm(true);
+        }}
+        style={styles.boardSideButton}
+        accessibilityLabel="Restart level"
+      >
+        <Text style={styles.controlIcon}>🔄</Text>
+      </CandyButton>
+    </>
+  );
+
+  const hintControl = (
+    <HintButton
+      tier={activeHint?.tier}
+      disabled={isGameOver || isComplete}
+      onPress={handleHintPress}
+    />
+  );
+
   return (
     <Animated.View
       style={[
-        styles.container,
+        styles.root,
         {
           opacity: isFirstLevelLoad.current ? 1 : screenFadeAnim,
           transform: [{ translateY: isFirstLevelLoad.current ? 0 : screenSlideAnim }],
         },
       ]}
     >
-      {!isReady ? null : (
+      <CandyBackground style={[styles.container, { paddingTop: insets.top + 8 }]}>
+      {!isReady ? (
+        <View style={styles.loadingShimmer}>
+          <Animated.Text style={[styles.loadingPaw, { opacity: shimmerAnim }]}>🐾</Animated.Text>
+          <Text style={styles.loadingText}>Growing the garden...</Text>
+        </View>
+      ) : (
         <>
       {/* Interactive 3-Rule Spotlight Tutorial */}
       <InteractiveTutorial
@@ -449,21 +772,42 @@ export const GameScreen: React.FC = () => {
         onMarkCell={(row, col) => markCell(row, col)}
       />
 
+      {/* Mechanic Intro Tutorial (cats, linked, twin) */}
+      <MechanicIntroTutorial
+        visible={!!activeMechanicIntro}
+        mechanic={activeMechanicIntro ?? 'cats'}
+        onClose={() => setActiveMechanicIntro(null)}
+      />
+
+      {/* Chapter Intro Story Modal (mechanic debut chapters) */}
+      <ChapterStoryModal
+        visible={!!activeChapterStory}
+        story={activeChapterStory}
+        onClose={() => setActiveChapterStory(null)}
+      />
+
       {/* Wrong Move Toast Banner */}
       {wrongMoveToast && (
         <Animated.View style={[styles.wrongToast, { opacity: toastFadeAnim }]}>
           <Text style={styles.wrongToastIcon}>🐶</Text>
           <View>
-            <Text style={styles.wrongToastTitle}>Not quite!</Text>
-            <Text style={styles.wrongToastSub}>That puppy can't go there.</Text>
+            <Text style={styles.wrongToastTitle}>{wrongMoveToast.title}</Text>
+            <Text style={styles.wrongToastSub}>{wrongMoveToast.sub}</Text>
           </View>
         </Animated.View>
+      )}
+
+      {/* Combo Counter Toast */}
+      {comboToast && (
+        <View style={styles.comboToast}>
+          <Text style={styles.comboToastText}>{comboToast}</Text>
+        </View>
       )}
 
       {/* Game Over / Out of Hearts Modal */}
       {isGameOver && (
         <View style={styles.modalOverlay}>
-          <View style={styles.gameOverModal}>
+          <CandyPanel style={styles.gameOverModal} contentStyle={styles.gameOverModalFace}>
             <Text style={styles.modalBigEmoji}>🐶</Text>
             <Text style={styles.gameOverTitle}>Oops! The puppy got away.</Text>
             <Text style={styles.gameOverSub}>
@@ -471,14 +815,52 @@ export const GameScreen: React.FC = () => {
             </Text>
 
             <View style={styles.modalButtonGroup}>
-              <TouchableOpacity style={styles.gameOverRestartButton} onPress={handleRestart}>
-                <Text style={styles.primaryButtonText}>🔄 Try Again</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.gameOverKeepButton} onPress={keepLooking}>
-                <Text style={styles.secondaryButtonText}>🔍 Keep Looking</Text>
-              </TouchableOpacity>
+              <CandyButton
+                block
+                size="lg"
+                skin="red"
+                label="Try Again"
+                icon={<Text style={styles.controlIcon}>🔄</Text>}
+                onPress={handleRestart}
+              />
+              <CandyButton
+                block
+                skin="neutral"
+                label="Keep Looking"
+                icon={<Text style={styles.controlIcon}>🔍</Text>}
+                onPress={keepLooking}
+              />
             </View>
-          </View>
+          </CandyPanel>
+        </View>
+      )}
+
+      {/* Restart Confirmation Popup */}
+      {showRestartConfirm && !isGameOver && (
+        <View style={styles.modalOverlay}>
+          <CandyPanel style={styles.gameOverModal} contentStyle={styles.gameOverModalFace}>
+            <Text style={styles.modalBigEmoji}>🔄</Text>
+            <Text style={styles.gameOverTitle}>Restart this garden?</Text>
+            <Text style={styles.gameOverSub}>
+              Your current puppies will go back to bed — you'll start fresh.
+            </Text>
+            <View style={styles.modalButtonGroup}>
+              <CandyButton
+                block
+                size="lg"
+                skin="red"
+                label="Restart"
+                icon={<Text style={styles.controlIcon}>🔄</Text>}
+                onPress={handleRestart}
+              />
+              <CandyButton
+                block
+                skin="neutral"
+                label="Keep Playing"
+                onPress={() => setShowRestartConfirm(false)}
+              />
+            </View>
+          </CandyPanel>
         </View>
       )}
 
@@ -507,19 +889,19 @@ export const GameScreen: React.FC = () => {
               </View>
             </View>
 
-            <Text style={styles.completionTitle}>All puppies found! 🎉</Text>
-            <Text style={styles.completionSubtitle}>
-              {isDailyChallenge
-                ? `Daily Garden • ${getFormattedTodayDisplay()}`
-                : `Level ${currentLevel} Complete`}
-            </Text>
+            {/* Celebration puppy hero — swap this require() for the custom art */}
+            <Image
+              source={JENNY_PUPPY_IMAGE}
+              style={styles.completionPuppyImage}
+              resizeMode="contain"
+            />
 
-            {/* Paw-fect 3-Star Rating Display */}
+            {/* Paw-fect 3-Star Rating Display (supports half-stars from hints) */}
             <View style={styles.pawfectContainer}>
               <View style={styles.starBadgeRow}>
                 <Text style={[styles.starBadgeIcon, pawfectResult.stars >= 1 ? styles.starLit : styles.starDim]}>⭐</Text>
-                <Text style={[styles.starBadgeIcon, pawfectResult.stars >= 2 ? styles.starLit : styles.starDim]}>⭐</Text>
-                <Text style={[styles.starBadgeIcon, pawfectResult.stars >= 3 ? styles.starLit : styles.starDim]}>⭐</Text>
+                <Text style={[styles.starBadgeIcon, pawfectResult.stars >= 2 ? styles.starLit : pawfectResult.stars >= 1.5 ? styles.starHalf : styles.starDim]}>⭐</Text>
+                <Text style={[styles.starBadgeIcon, pawfectResult.stars >= 3 ? styles.starLit : pawfectResult.stars >= 2.5 ? styles.starHalf : styles.starDim]}>⭐</Text>
               </View>
               <Text style={styles.pawfectTitle}>{pawfectResult.label}</Text>
               <Text style={styles.pawfectSub}>{pawfectResult.subtext}</Text>
@@ -538,25 +920,6 @@ export const GameScreen: React.FC = () => {
               </View>
             )}
 
-            <View style={styles.statsCard}>
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>🎯 Moves</Text>
-                <Text style={styles.statValue}>{moves}</Text>
-                {levelBestStats && moves >= levelBestStats.bestMoves && (
-                  <Text style={styles.statBadge}>⭐</Text>
-                )}
-              </View>
-              <View style={styles.statRow}>
-                <Text style={styles.statLabel}>❤️ Hearts Left</Text>
-                <Text style={styles.statValue}>{hearts} / 3</Text>
-              </View>
-              {levelBestStats && (
-                <View style={styles.bestStatsRow}>
-                  <Text style={styles.bestStatsLabel}>Best: {levelBestStats.bestMoves} moves • {Math.floor(levelBestStats.bestTime / 60)}:{(levelBestStats.bestTime % 60).toString().padStart(2, '0')}</Text>
-                </View>
-              )}
-            </View>
-
             {shareToast && (
               <View style={styles.shareToastBadge}>
                 <Text style={styles.shareToastBadgeText}>📋 Result Copied to Clipboard! 🐾</Text>
@@ -565,48 +928,57 @@ export const GameScreen: React.FC = () => {
 
             <View style={styles.modalButtonGroup}>
               {isDailyChallenge && (
-                <TouchableOpacity
-                  style={styles.shareDailyButton}
+                <CandyButton
+                  block
+                  skin="orange"
+                  label="Share Walk Result"
+                  icon={<Text style={styles.controlIcon}>📤</Text>}
                   onPress={handleShareDaily}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.shareDailyButtonText}>Share Walk Result 📤</Text>
-                </TouchableOpacity>
+                />
               )}
 
               {isDailyChallenge ? (
-                <TouchableOpacity
-                  style={styles.primaryButton}
+                <CandyButton
+                  block
+                  size="lg"
+                  skin="green"
+                  label="Return to Meadow"
+                  icon={<Text style={styles.controlIcon}>🏡</Text>}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     soundManager.play('button');
                     setShowCompletionModal(false);
                     setActiveScreen('home');
                   }}
-                >
-                  <Text style={styles.primaryButtonText}>Return to Meadow 🏡</Text>
-                </TouchableOpacity>
+                />
               ) : (
-                <TouchableOpacity style={styles.primaryButton} onPress={handleNextLevel}>
-                  <Text style={styles.primaryButtonText}>
-                    {currentLevel >= 1000 ? '🔄 Play Again' : 'Next Level ➡️'}
-                  </Text>
-                </TouchableOpacity>
+                <CandyButton
+                  block
+                  size="lg"
+                  skin="green"
+                  label={currentLevel >= 1000 ? 'Play Again' : 'Next Level'}
+                  icon={<Text style={styles.controlIcon}>{currentLevel >= 1000 ? '🔄' : '➡️'}</Text>}
+                  onPress={handleNextLevel}
+                />
               )}
-              <TouchableOpacity
-                style={styles.mapButtonModal}
+              <CandyButton
+                block
+                skin="blue"
+                label="World Map"
+                icon={<Text style={styles.controlIcon}>🗺️</Text>}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   soundManager.play('button');
                   setShowCompletionModal(false);
                   setActiveScreen('map');
                 }}
-              >
-                <Text style={styles.mapButtonModalText}>🗺️ World Map</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryButton} onPress={handleRestart}>
-                <Text style={styles.secondaryButtonText}>Replay Level</Text>
-              </TouchableOpacity>
+              />
+              <CandyButton
+                block
+                skin="neutral"
+                label="Replay Level"
+                onPress={handleRestart}
+              />
             </View>
           </Animated.View>
         </View>
@@ -626,239 +998,186 @@ export const GameScreen: React.FC = () => {
         }}
       />
 
-      {/* Level Select Modal */}
-      {showLevelSelectModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.levelModal}>
-            <View style={styles.levelModalHeader}>
-              <Text style={styles.levelModalTitle}>🗺️ Choose Level</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowLevelSelectModal(false);
-                }}
-                style={styles.hintCloseIcon}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Text style={styles.hintCloseIconText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Chapter Tabs */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chapterTabBar}>
-              {CHAPTERS.map((ch, idx) => (
-                <TouchableOpacity
-                  key={ch.id}
-                  style={[
-                    styles.chapterTabButton,
-                    selectedChapter === idx && [
-                      styles.chapterTabButtonActive,
-                      { borderColor: ch.accentColor, backgroundColor: ch.accentColor + '15' },
-                    ],
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedChapter(idx);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.chapterTabEmoji}>{ch.icon}</Text>
-                  <Text
-                    style={[
-                      styles.chapterTabTitle,
-                      selectedChapter === idx && [styles.chapterTabTitleActive, { color: ch.accentColor }],
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {ch.title}
-                  </Text>
-                  <Text style={[styles.chapterTabSub, selectedChapter === idx && styles.chapterTabSubActive]}>
-                    {ch.gridSizes}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Chapter info subtitle */}
-            <View style={styles.levelModalChapterInfo}>
-              <Text style={styles.levelModalChapterRange}>
-                Levels {CHAPTERS[selectedChapter].start}–{CHAPTERS[selectedChapter].end}
-              </Text>
-              <View
-                style={[
-                  styles.levelModalDiffBadge,
-                  { backgroundColor: CHAPTERS[selectedChapter].accentColor },
-                ]}
-              >
-                <Text style={styles.levelModalDiffBadgeText}>
-                  {CHAPTERS[selectedChapter].difficultyBadge}
-                </Text>
-              </View>
-            </View>
-
-            {/* Level Grid for current chapter */}
-            <ScrollView style={styles.levelGridScroll}>
-              <View style={styles.levelGrid}>
-                {Array.from(
-                  { length: CHAPTERS[selectedChapter].end - CHAPTERS[selectedChapter].start + 1 },
-                  (_, i) => CHAPTERS[selectedChapter].start + i
-                ).map(level => {
-                  const isLocked = level > unlockedLevels;
-                  const isCurrent = level === currentLevel;
-                  const difficulty = getLevelDifficulty(level);
-                  const color = getDifficultyColor(difficulty);
-
-                  return (
-                    <TouchableOpacity
-                      key={level}
-                      style={[
-                        styles.levelGridItem,
-                        isCurrent && styles.levelGridItemCurrent,
-                        isLocked && styles.levelGridItemLocked,
-                      ]}
-                      onPress={() => handleLevelSelect(level)}
-                      disabled={isLocked}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.levelGridItemNumber, isLocked && styles.levelGridItemLockedText]}>
-                        {isLocked ? '🔒' : level}
-                      </Text>
-                      {!isLocked && (
-                        <View style={[styles.levelItemDot, { backgroundColor: color }]} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      )}
-
-      {/* Clean Top Navigation Bar */}
+      {/* Upper utility bar — nav buttons pinned to the top edge */}
       <View style={styles.topNavBar}>
         <View style={styles.topNavSide}>
-          <TouchableOpacity
-            style={styles.navIconButton}
+          <CandyButton
+            skin="grape"
+            size="sm"
+            label={isDailyChallenge ? 'Home' : 'Map'}
+            icon={<Text style={styles.navIcon}>⬅️</Text>}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               soundManager.play('button');
               setActiveScreen(isDailyChallenge ? 'home' : 'map');
             }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.navButtonText}>{isDailyChallenge ? '⬅️ Home' : '⬅️ Map'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.centerLevelGroup}>
-          <View style={styles.centerLevelInfo}>
-            <Text style={styles.navTitle}>
-              {isDailyChallenge ? 'Daily Garden' : `Level ${currentLevel}`}
-            </Text>
-            <View
-              style={[
-                styles.difficultyBadgeHeader,
-                {
-                  backgroundColor: isDailyChallenge
-                    ? '#E65100'
-                    : getDifficultyColor(getLevelDifficulty(currentLevel)),
-                },
-              ]}
-            >
-              <Text style={styles.difficultyBadgeHeaderText}>
-                {isDailyChallenge ? '🔥 Daily' : getDifficultyLabel(getLevelDifficulty(currentLevel))}
-              </Text>
-            </View>
-          </View>
-          {!isDailyChallenge && (
-            <TouchableOpacity
-              style={styles.levelJumpButton}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                soundManager.play('button');
-                const initialIdx = Math.max(0, Math.min(49, Math.floor((currentLevel - 1) / 20)));
-                setSelectedChapter(initialIdx);
-                setShowLevelSelectModal(true);
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.levelJumpButtonText}>�</Text>
-            </TouchableOpacity>
-          )}
+          />
         </View>
 
         <View style={[styles.topNavSide, styles.topNavSideRight]}>
           <View style={styles.rightNavActions}>
-            <TouchableOpacity
-              style={styles.navIconButton}
+            <CandyButton
+              skin="grape"
+              size="sm"
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 soundManager.play('button');
                 setShowTutorial(true);
               }}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.navSquareButton}
             >
-              <Text style={styles.navButtonText}>❓</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.navIconButton}
+              <Text style={styles.navIcon}>❓</Text>
+            </CandyButton>
+            <CandyButton
+              skin="grape"
+              size="sm"
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setShowSettingsModal(true);
               }}
-              activeOpacity={0.7}
+              style={styles.navSquareButton}
             >
-              <Text style={styles.navButtonText}>⚙️</Text>
-            </TouchableOpacity>
+              <Text style={styles.navIcon}>⚙️</Text>
+            </CandyButton>
           </View>
         </View>
       </View>
 
-      {/* Sub-Header Stats Bar */}
-      <View style={styles.subStatsBar}>
-        {gameMode === 'challenge' ? (
-          <Animated.View
+      {/* Level header on its own centered row under the utility bar */}
+      <CandyPanel
+        radius={CANDY_METRICS.radiusCard}
+        style={styles.levelHeaderPanel}
+        contentStyle={styles.centerLevelGroup}
+      >
+        <View style={styles.centerLevelInfo}>
+          <Text style={styles.navTitle}>
+            {isDailyChallenge ? 'Daily Walk' : `Level ${currentLevel}`}
+          </Text>
+          <View
             style={[
-              styles.subStatItem,
-              { transform: [{ scale: heartScaleAnim }] },
+              styles.difficultyBadgeHeader,
+              {
+                backgroundColor: isDailyChallenge
+                  ? '#E65100'
+                  : getDifficultyColor(getLevelDifficulty(currentLevel)),
+              },
             ]}
           >
-            <Text style={styles.heart}>❤️</Text>
-            <Text style={styles.subStatText}>{hearts} / 3</Text>
-          </Animated.View>
-        ) : (
-          <View style={styles.subStatItem}>
+            <Text style={styles.difficultyBadgeHeaderText}>
+              {isDailyChallenge ? '🔥 Daily' : getDifficultyLabel(getLevelDifficulty(currentLevel))}
+            </Text>
+          </View>
+          {(mechanics.puppiesPerUnit > 1 || mechanics.catCount > 0 || mechanics.linkedCount > 0) && (
+            <Text style={styles.twistText}>
+              {mechanics.puppiesPerUnit > 1 &&
+                `👯 ${mechanics.puppiesPerUnit} pups per row, column & patch!  `}
+              {mechanics.catCount > 0 && '😾 Cats need space!  '}
+              {mechanics.linkedCount > 0 && '🔗 Linked beds share 1 pup!'}
+            </Text>
+          )}
+        </View>
+      </CandyPanel>
+
+      {/* Stats, board and controls stay vertically centered in the leftover space */}
+      <View style={styles.gameColumn}>
+
+      {/* Sub-Header Stats Bar */}
+      <View style={styles.subStatsBar}>
+        {gameMode === 'zen' ? (
+          <CandyPanel variant="well" radius={CANDY_METRICS.radiusChip} contentStyle={styles.subStatItem}>
             <Text style={styles.subStatIcon}>🧘</Text>
             <Text style={styles.subStatText}>
               Zen {mistakes > 0 ? `(${mistakes} err)` : ''}
             </Text>
-          </View>
+          </CandyPanel>
+        ) : (
+          <Animated.View style={{ transform: [{ scale: heartScaleAnim }] }}>
+            <CandyPanel variant="well" radius={CANDY_METRICS.radiusChip} contentStyle={styles.subStatItem}>
+              <Text style={styles.heart}>❤️</Text>
+              <Text style={styles.subStatText}>{hearts} / 3</Text>
+              {gameMode === 'normal' && mistakes < 3 && (
+                <Text style={styles.subStatHint}>
+                  {3 - mistakes} oops left
+                </Text>
+              )}
+            </CandyPanel>
+          </Animated.View>
         )}
 
-        <View style={styles.subStatItem}>
+        <CandyPanel variant="well" radius={CANDY_METRICS.radiusChip} contentStyle={styles.subStatItem}>
           <Text style={styles.subStatIcon}>🎯</Text>
           <Text style={styles.subStatText}>Moves: {moves}</Text>
-        </View>
+        </CandyPanel>
+
+        {hintsUsed > 0 && (
+          <CandyPanel variant="well" radius={CANDY_METRICS.radiusChip} contentStyle={styles.subStatItem}>
+            <Text style={styles.subStatIcon}>💡</Text>
+            <Text style={styles.subStatText}>{hintsUsed}</Text>
+          </CandyPanel>
+        )}
+
+        {mechanics.puppiesPerUnit > 1 && (
+          <CandyPanel variant="well" radius={CANDY_METRICS.radiusChip} contentStyle={styles.subStatItem}>
+            <Text style={styles.subStatIcon}>🐾</Text>
+            <Text style={styles.subStatText}>×{mechanics.puppiesPerUnit}</Text>
+          </CandyPanel>
+        )}
       </View>
 
-      {/* The Board */}
-      <View style={styles.boardContainer}>
-        <Board
-          board={board}
-          onCellPress={handleCellPress}
-          onMarkCell={handleMarkCell}
-          cellSize={cellSize}
-          wrongCell={lastWrongCell}
-          isCompleting={isComplete}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        />
+      {/* The Board flanked by Undo + Restart on the left, Hint on the right —
+          on narrow screens the controls stack in a row under the board */}
+      <View style={styles.boardRow}>
+        {flankControls && (
+          <View style={styles.boardSideControls}>{undoRestartButtons}</View>
+        )}
+
+        <View style={styles.boardContainer}>
+          <Board
+            board={board}
+            onCellPress={handleCellPress}
+            onMarkCell={handleMarkCell}
+            cellSize={cellSize}
+            wrongCell={lastWrongCell}
+            hintCell={activeHint?.tier === 2 ? activeHint.cell : null}
+            isCompleting={isComplete}
+            showCatAura={showCatAura}
+            linkedPulseRegionId={linkedPulseRegionId}
+            quota={mechanics.puppiesPerUnit}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          />
+        </View>
+
+        {flankControls && (
+          <View style={styles.boardSideControls}>{hintControl}</View>
+        )}
       </View>
+
+      {!flankControls && (
+        <View style={[styles.boardControlsRow, { width: Math.max(boardTrayWidth, 250) }]}>
+          <View style={styles.boardControlsRowGroup}>{undoRestartButtons}</View>
+          {hintControl}
+        </View>
+      )}
+
+      {/* Jenny's hint speech bubble */}
+      {hintBubble && (
+        <View style={styles.hintBubble}>
+          <JennyAvatar size={36} mood="friendly" />
+          <View style={styles.hintBubbleText}>
+            <Text style={styles.hintBubbleName}>Jenny says:</Text>
+            <Text style={styles.hintBubbleQuote}>{hintBubble}</Text>
+          </View>
+        </View>
+      )}
 
       {/* Input Mode Switcher Pill */}
-      <View style={styles.modeSwitcherContainer}>
+      <CandyPanel
+        variant="well"
+        radius={CANDY_METRICS.radiusPill}
+        contentStyle={styles.modeSwitcherContainer}
+        style={styles.modeSwitcherWrap}
+      >
         <TouchableOpacity
           style={[
             styles.modePillButton,
@@ -892,22 +1211,14 @@ export const GameScreen: React.FC = () => {
           activeOpacity={0.8}
         >
           <View style={styles.modePillContent}>
-            <ChalkMarkSprite size={16} />
+            <Image source={PAW_IMAGE} style={styles.modePillPaw} resizeMode="contain" />
             <Text style={[styles.modePillText, inputMode === 'mark' && styles.activeModePillText]}>
-              Chalk Mark
+              Paw Mark
             </Text>
           </View>
         </TouchableOpacity>
-      </View>
+      </CandyPanel>
 
-      {/* Controls */}
-      <View style={styles.controls}>
-        <TouchableOpacity style={styles.controlButton} onPress={handleUndo}>
-          <Text style={styles.controlButtonText}>↩️ Undo</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.controlButton} onPress={handleRestart}>
-          <Text style={styles.controlButtonText}>🔄 Restart</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Puppy Milestone Adoption Certificate Modal */}
@@ -918,129 +1229,125 @@ export const GameScreen: React.FC = () => {
       />
         </>
       )}
+      </CandyBackground>
     </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#FBF9F5',
-    padding: 20,
+  },
+  loadingShimmer: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: 12,
   },
-  header: {
-    marginBottom: 16,
-    alignItems: 'center',
+  loadingPaw: {
+    fontSize: 48,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 6,
-  },
-  stats: {
-    flexDirection: 'row',
-    gap: 24,
-  },
-  stat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  heart: {
-    fontSize: 22,
-  },
-  statText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  levelSelectorContainer: {
-    height: 48,
-    marginBottom: 16,
-    width: '100%',
-  },
-  levelSelector: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  levelButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#E2D9C8',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  activeLevelButton: {
-    backgroundColor: '#FFF3E0',
-    borderColor: '#E67E22',
-  },
-  lockedLevelButton: {
-    opacity: 0.45,
-  },
-  levelButtonText: {
+  loadingText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#5A5245',
+    color: 'rgba(255, 255, 255, 0.6)',
   },
-  lockedLevelButtonText: {
-    color: '#888',
+  container: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
   },
-  difficultyBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 8,
-    minWidth: 16,
+  gameColumn: {
+    flex: 1,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  difficultyBadgeText: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    color: '#fff',
+  levelHeaderPanel: {
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  heart: {
+    fontSize: 18,
   },
   boardContainer: {
-    marginBottom: 32,
+    marginBottom: 18,
   },
-  controls: {
+  boardRow: {
     flexDirection: 'row',
-    gap: 12,
-    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    width: '100%',
+    gap: 10,
   },
-  controlButton: {
-    paddingVertical: 13,
-    paddingHorizontal: 20,
-    borderRadius: 18,
-    backgroundColor: '#FFFBF2',
-    borderWidth: 1.5,
-    borderColor: '#F5DCB7',
-    minWidth: 100,
-    shadowColor: '#E67E22',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 2,
+  boardSideControls: {
+    flexDirection: 'column',
+    gap: 10,
+    alignItems: 'center',
+    width: SIDE_CONTROLS_WIDTH,
   },
-  controlButtonText: {
-    fontSize: 15,
+  boardControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  boardControlsRowGroup: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  boardSideButton: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subStatHint: {
+    fontSize: 10,
     fontWeight: '700',
-    color: '#6E4822',
-    textAlign: 'center',
+    color: CANDY_TEXT.onDarkSoft,
+    marginLeft: 4,
+  },
+  hintBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(33, 18, 66, 0.92)',
+    borderColor: CANDY_GOLD.base,
+    borderWidth: 1.5,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    gap: 10,
+    shadowColor: '#150A2E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  hintBubbleText: {
+    flex: 1,
+  },
+  hintBubbleName: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: CANDY_GOLD.light,
+    marginBottom: 2,
+  },
+  hintBubbleQuote: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: CANDY_TEXT.onDark,
+    lineHeight: 17,
+  },
+
+  /* Modal button icons */
+  controlIcon: {
+    fontSize: 16,
   },
 
   /* Floating Wrong Toast */
@@ -1050,61 +1357,55 @@ const styles = StyleSheet.create({
     zIndex: 999,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF6F4',
-    borderColor: '#F3C7C2',
-    borderWidth: 1.5,
+    backgroundColor: '#5B1F3A',
+    borderColor: '#FF7A8A',
+    borderWidth: 2,
     paddingVertical: 11,
     paddingHorizontal: 18,
     borderRadius: 16,
     gap: 12,
-    shadowColor: '#B03A2E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: '#120726',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 10,
   },
   wrongToastIcon: {
     fontSize: 24,
   },
+  comboToast: {
+    position: 'absolute',
+    top: 90,
+    zIndex: 998,
+    backgroundColor: '#1E8F7E',
+    borderColor: '#7FE9D8',
+    borderWidth: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    shadowColor: '#120726',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  comboToastText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textShadowColor: '#0F6B2B',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
+  },
   wrongToastTitle: {
     fontSize: 15,
-    fontWeight: '800',
-    color: '#B03A2E',
+    fontWeight: '900',
+    color: '#FFD5DA',
   },
   wrongToastSub: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#8A7A68',
-  },
-
-  /* Level Select Modal */
-  levelModalChapterInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    marginBottom: 12,
-  },
-  levelModalChapterRange: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#5A5245',
-    letterSpacing: 0.2,
-  },
-  levelModalDiffBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  levelModalDiffBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FFF',
-    letterSpacing: 0.4,
-  },
-  chapterTabEmoji: {
-    fontSize: 18,
-    marginBottom: 2,
+    color: '#E9BFC8',
   },
 
   /* Modals */
@@ -1114,7 +1415,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(14, 6, 32, 0.78)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
@@ -1130,70 +1431,17 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 16,
   },
-  primaryButton: {
-    backgroundColor: '#27AE60',
-    paddingVertical: 14,
-    borderRadius: 18,
-    alignItems: 'center',
-    shadowColor: '#27AE60',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  primaryButtonText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.1,
-  },
-  secondaryButton: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E2D9C8',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
-  },
-  secondaryButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#5A5245',
-  },
-  mapButtonModal: {
-    backgroundColor: '#FFFBF2',
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#F5DCB7',
-    shadowColor: '#E67E22',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  mapButtonModalText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#6E4822',
-  },
 
-  /* Paw-fect Star System & Daily Share Styles */
+  /* Paw-fect Star System & Daily Share */
   pawfectContainer: {
     alignItems: 'center',
-    backgroundColor: '#FAF6EE',
+    backgroundColor: 'rgba(20, 10, 44, 0.45)',
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 16,
     marginBottom: 14,
     borderWidth: 1.5,
-    borderColor: '#EFE7D8',
+    borderColor: CANDY_GOLD.dark,
     width: '100%',
   },
   starBadgeRow: {
@@ -1202,46 +1450,42 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   starBadgeIcon: {
-    fontSize: 26,
+    fontSize: 28,
   },
   starLit: {
     opacity: 1,
+    textShadowColor: CANDY_GOLD.base,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   starDim: {
-    opacity: 0.25,
+    opacity: 0.22,
+  },
+  starHalf: {
+    opacity: 0.55,
+    textShadowColor: CANDY_GOLD.base,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 5,
   },
   pawfectTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#2C2A29',
+    fontSize: 17,
+    fontWeight: '900',
+    color: CANDY_GOLD.light,
     marginBottom: 2,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 0,
   },
   pawfectSub: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#7F7567',
+    color: CANDY_TEXT.onDarkSoft,
     textAlign: 'center',
   },
-  shareDailyButton: {
-    backgroundColor: '#E65100',
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#E65100',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 5,
-    elevation: 4,
-    marginBottom: 4,
-  },
-  shareDailyButtonText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-  },
   shareToastBadge: {
-    backgroundColor: '#2A9D8F',
+    backgroundColor: '#1E8F7E',
+    borderWidth: 1.5,
+    borderColor: '#7FE9D8',
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 12,
@@ -1251,109 +1495,62 @@ const styles = StyleSheet.create({
   shareToastBadgeText: {
     color: '#FFF',
     fontSize: 12,
-    fontWeight: '700',
-  },
-
-  /* Tutorial Modal */
-  tutorialModal: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 12,
-    maxWidth: '85%',
-    elevation: 5,
-  },
-  tutorialTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  tutorialText: {
-    fontSize: 15,
-    color: '#333',
-    marginBottom: 8,
-    lineHeight: 20,
+    fontWeight: '800',
   },
 
   /* Game Over Modal */
   gameOverModal: {
-    backgroundColor: '#FFFDF9',
-    padding: 24,
-    borderRadius: 20,
     width: '88%',
+    maxWidth: 380,
+  },
+  gameOverModalFace: {
+    padding: 24,
     alignItems: 'center',
-    elevation: 6,
-    borderWidth: 1.5,
-    borderColor: '#F3C7C2',
-    shadowColor: '#B03A2E',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
+    borderColor: '#FF7A8A',
   },
   gameOverTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#B03A2E',
+    fontSize: 21,
+    fontWeight: '900',
+    color: '#FFD5DA',
     textAlign: 'center',
     marginBottom: 6,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
   },
   gameOverSub: {
     fontSize: 15,
-    color: '#7F7567',
+    fontWeight: '600',
+    color: CANDY_TEXT.onDarkSoft,
     textAlign: 'center',
     marginBottom: 8,
-  },
-  gameOverRestartButton: {
-    backgroundColor: '#E57373',
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#E57373',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  gameOverKeepButton: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 13,
-    borderRadius: 16,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E2D9C8',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
   },
 
   /* Completion Modal */
   completionModal: {
-    backgroundColor: '#FFFDF9',
+    backgroundColor: CANDY_SURFACE.top,
     padding: 24,
-    borderRadius: 22,
+    borderRadius: 24,
     width: '90%',
     maxWidth: 380,
     alignItems: 'center',
-    elevation: 8,
-    borderWidth: 1.5,
-    borderColor: '#FFE8A3',
-    shadowColor: '#E67E22',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
+    borderWidth: 2.5,
+    borderColor: CANDY_GOLD.base,
+    shadowColor: '#0E0620',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.55,
+    shadowRadius: 22,
+    elevation: 14,
   },
   completionJennyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#FFFDF9',
+    backgroundColor: 'rgba(20, 10, 44, 0.4)',
     padding: 12,
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: '#FFE8A3',
+    borderColor: CANDY_SURFACE.border,
     marginBottom: 14,
     width: '100%',
   },
@@ -1362,131 +1559,92 @@ const styles = StyleSheet.create({
   },
   completionJennyName: {
     fontSize: 12,
-    fontWeight: '800',
-    color: '#D35400',
+    fontWeight: '900',
+    color: CANDY_GOLD.base,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
     marginBottom: 2,
   },
   completionJennyQuote: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#4B382A',
+    color: CANDY_TEXT.onDark,
     lineHeight: 18,
     fontStyle: 'italic',
   },
-  completionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#2B9348',
-    textAlign: 'center',
+  completionPuppyImage: {
+    width: 150,
+    height: 150,
+    marginBottom: 12,
   },
-  completionSubtitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#555',
-    marginBottom: 14,
-    textAlign: 'center',
-  },
-  statsCard: {
-    width: '100%',
-    backgroundColor: '#FFFDF8',
-    borderRadius: 14,
-    padding: 14,
-    gap: 9,
-    borderWidth: 1.5,
-    borderColor: '#EFE7D8',
-  },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#7F7567',
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#2C2A29',
-  },
-  statBadge: {
-    fontSize: 14,
-    marginLeft: 4,
-  },
-  bestStatsRow: {
-    marginTop: 8,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#EFE7D8',
-  },
-  bestStatsLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#8A7A68',
-    textAlign: 'center',
+
+  /* Input Mode Switcher */
+  modeSwitcherWrap: {
+    marginTop: 14,
+    marginBottom: 10,
   },
   modeSwitcherContainer: {
     flexDirection: 'row',
-    backgroundColor: '#E5DFD5',
-    borderRadius: 25,
     padding: 4,
-    marginTop: 16,
-    marginBottom: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   modePillButton: {
     paddingVertical: 10,
-    paddingHorizontal: 22,
-    borderRadius: 22,
+    paddingHorizontal: 20,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 135,
+    minWidth: 130,
   },
   modePillContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  modePillPaw: {
+    width: 18,
+    height: 18,
+  },
   activePuppyPill: {
-    backgroundColor: '#D4836A', // Terracotta Clay
-    shadowColor: '#D4836A',
+    backgroundColor: '#FF8AB0',
+    borderWidth: 1.5,
+    borderColor: '#C43D70',
+    shadowColor: '#C43D70',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.5,
     shadowRadius: 5,
-    elevation: 3,
+    elevation: 4,
   },
   activeMarkPill: {
-    backgroundColor: '#5B7C9E', // Dusty Blue
-    shadowColor: '#5B7C9E',
+    backgroundColor: '#5FC8F5',
+    borderWidth: 1.5,
+    borderColor: '#1A6BAD',
+    shadowColor: '#1A6BAD',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.5,
     shadowRadius: 5,
-    elevation: 3,
+    elevation: 4,
   },
   modePillText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#6B655B',
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkMuted,
   },
   activeModePillText: {
     color: '#FFFFFF',
-    fontWeight: 'bold',
+    fontWeight: '900',
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
-  // New Header & Navigation Bar
+
+  /* Header & Navigation Bar */
   topNavBar: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
-    paddingHorizontal: 6,
+    paddingHorizontal: 2,
     marginBottom: 10,
     paddingTop: 2,
   },
@@ -1503,366 +1661,85 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#FFFDF9',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#EFE7D8',
-    shadowColor: '#5C4A38',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  levelJumpButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: '#F5EFE3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  levelJumpButtonText: {
-    fontSize: 16,
+    paddingVertical: 7,
   },
   rightNavActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 3,
-    backgroundColor: '#FFFDF8',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#EFE7D8',
-    shadowColor: '#5C4A38',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 4,
-    elevation: 2,
+    gap: 6,
     marginLeft: 'auto',
   },
-  navIconButton: {
-    backgroundColor: 'transparent',
-    paddingVertical: 7,
-    paddingHorizontal: 11,
-    borderRadius: 10,
+  navSquareButton: {
+    minWidth: 40,
   },
-  navButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#5A5245',
+  navIcon: {
+    fontSize: 15,
   },
   centerLevelInfo: {
     alignItems: 'center',
     gap: 3,
   },
+  twistText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: CANDY_GOLD.light,
+    textAlign: 'center',
+    marginTop: 2,
+  },
   navTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#2C2A29',
+    fontWeight: '900',
+    color: CANDY_TEXT.onDark,
+    letterSpacing: 0.3,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
   },
   difficultyBadgeHeader: {
     paddingHorizontal: 10,
     paddingVertical: 2,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
   },
   difficultyBadgeHeaderText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '900',
     color: '#FFFFFF',
     textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   subStatsBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 20,
+    gap: 14,
     marginBottom: 12,
   },
   subStatItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
   },
   subStatIcon: {
     fontSize: 16,
   },
   subStatText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#444',
+    fontWeight: '800',
+    color: CANDY_TEXT.onDark,
   },
-  // Settings Modal Styles
-  settingsModal: {
-    backgroundColor: '#FFFDF9',
-    borderRadius: 20,
-    padding: 22,
-    width: '90%',
-    maxWidth: 380,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: '#EFEAE1',
-  },
-  settingsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  settingsTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2C2A29',
-  },
-  settingsSectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#777',
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  settingsModeGroup: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 20,
-  },
-  settingsModeOption: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: '#F5F0EA',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#F5F0EA',
-  },
-  settingsModeOptionActive: {
-    backgroundColor: '#FFF',
-    borderColor: '#2A9D8F',
-    shadowColor: '#2A9D8F',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  settingsModeEmoji: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  settingsModeText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#666',
-  },
-  settingsModeTextActive: {
-    color: '#2A9D8F',
-  },
-  settingsModeSub: {
-    fontSize: 11,
-    color: '#888',
-    marginTop: 2,
-  },
-  settingsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F0EBE1',
-    marginBottom: 16,
-  },
-  settingsRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  settingsRowIcon: {
-    fontSize: 20,
-  },
-  settingsRowLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333',
-  },
-  toggleSwitch: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: '#D1CCC4',
-  },
-  toggleSwitchActive: {
-    backgroundColor: '#2A9D8F',
-  },
-  toggleSwitchText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  settingsActions: {
-    gap: 10,
-  },
-  settingsRestartButton: {
-    backgroundColor: '#F5F0EA',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  settingsRestartText: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#555',
-  },
-  settingsCloseButton: {
-    backgroundColor: '#2C2A29',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  settingsCloseText: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  // Level Select Modal Styles
-  levelModal: {
-    backgroundColor: '#FFFDF9',
-    borderRadius: 20,
-    padding: 18,
-    width: '94%',
-    maxWidth: 440,
-    maxHeight: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  levelModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  levelModalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2C2A29',
-  },
-  hintCloseIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#F5EFE3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hintCloseIconText: {
-    fontSize: 16,
-    color: '#8A7A68',
-    fontWeight: '700',
-  },
-  chapterTabBar: {
-    maxHeight: 52,
-    marginBottom: 12,
-  },
-  chapterTabButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    marginRight: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#EFE7D8',
-    minWidth: 84,
-    shadowColor: '#5C4A38',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  chapterTabButtonActive: {
-    backgroundColor: '#FFF3E0',
-    borderColor: '#E67E22',
-    borderWidth: 1.5,
-  },
-  chapterTabTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#7F7567',
-  },
-  chapterTabTitleActive: {
-    color: '#D35400',
-  },
-  chapterTabSub: {
-    fontSize: 10,
-    color: '#A49B8D',
-    fontWeight: '600',
-  },
-  chapterTabSubActive: {
-    color: '#B8860B',
-  },
-  levelGridScroll: {
-    maxHeight: 320,
-  },
-  levelGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'flex-start',
-    paddingVertical: 4,
-  },
-  levelGridItem: {
-    width: '18%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#E2DBD0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  levelGridItemCurrent: {
-    borderColor: '#2A9D8F',
-    borderWidth: 2.5,
-    backgroundColor: '#F0FAF8',
-  },
-  levelGridItemLocked: {
-    backgroundColor: '#EAE5DC',
-    borderColor: '#DDD7CE',
-  },
-  levelGridItemNumber: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  levelGridItemLockedText: {
-    fontSize: 13,
-    color: '#999',
-  },
-  levelItemDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    position: 'absolute',
-    bottom: 4,
-  },
+
+
+  /* Daily Streak Celebration */
   dailyStreakCelebration: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: 'rgba(20, 10, 44, 0.45)',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: '#FFE0B2',
+    borderColor: CANDY_GOLD.dark,
     marginVertical: 10,
     alignItems: 'center',
     width: '100%',
@@ -1870,12 +1747,12 @@ const styles = StyleSheet.create({
   dailyStreakCelebrationText: {
     fontSize: 16,
     fontWeight: '900',
-    color: '#E65100',
+    color: CANDY_GOLD.light,
   },
   dailyRewardCelebrationText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#2E7D32',
+    fontWeight: '800',
+    color: '#8CFFA8',
     marginTop: 4,
   },
 });
