@@ -24,6 +24,7 @@ npm run preview # serve the built site
   repo. For a real launch, upload it to a GitHub Release (or use the Play Store
   link) and update `APK_URL` at the top of `src/pages/index.astro`.
 - Deploy anywhere static: GitHub Pages, Netlify, Vercel, Cloudflare Pages —
-  point it at `npm run build` with output dir `dist/`.
+  point it at `npm run build` with output dir `dist/`. The production domain is
+  `jennydoko.fun` (set in `astro.config.mjs`); point its DNS at the host you pick.
 - Branding: the page says "JennyDoko" but the app icon/banner art still says
   "Jenny's Sudoku" — regenerate the logo art or update the name before launch.
