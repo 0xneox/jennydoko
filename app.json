@@ -12,7 +12,6 @@
     },
     "android": {
       "package": "com.jennydoko.app",
-      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#13B0FA",
         "foregroundImage": "./assets/android-icon-foreground.png",
