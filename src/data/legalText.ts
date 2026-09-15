@@ -5,12 +5,12 @@ import { APP_NAME } from '../utils/theme';
  * static pages in public/*.html for web hosting (the Play Store listing needs
  * a public privacy policy URL).
  *
- * TODO before release: replace CONTACT_EMAIL with a real support address, and
- * LEGAL_ENTITY with your name or studio name.
+ * Public policy URL: https://jennydoko.fun/privacy.html
+ * Public terms URL:  https://jennydoko.fun/terms.html
  */
-export const CONTACT_EMAIL = 'support@example.com';
-export const LEGAL_ENTITY = 'the JennyDoko team';
-export const LEGAL_LAST_UPDATED = 'September 14, 2026';
+export const CONTACT_EMAIL = 'neohex262@pm.me';
+export const LEGAL_ENTITY = '21b Labs';
+export const LEGAL_LAST_UPDATED = 'September 15, 2026';
 
 export interface LegalSection {
   heading: string;
@@ -53,7 +53,7 @@ export const PRIVACY_POLICY: LegalDocument = {
     },
     {
       heading: 'Contact',
-      body: `Questions about privacy? Contact ${LEGAL_ENTITY} at ${CONTACT_EMAIL}.`,
+      body: `Questions about privacy? Contact ${LEGAL_ENTITY} at ${CONTACT_EMAIL}, or visit jennydoko.fun.`,
     },
   ],
 };
@@ -88,7 +88,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
     },
     {
       heading: 'Contact',
-      body: `Questions about these terms? Contact ${LEGAL_ENTITY} at ${CONTACT_EMAIL}.`,
+      body: `Questions about these terms? Contact ${LEGAL_ENTITY} at ${CONTACT_EMAIL}, or visit jennydoko.fun.`,
     },
   ],
 };

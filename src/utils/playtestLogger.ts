@@ -184,8 +184,8 @@ class PlaytestLoggerClass {
     if (!this.session) return;
     try {
       // Use in-memory storage for simplicity — can be extended to AsyncStorage
-      console.log('[PlaytestLogger] Session saved');
-      console.log(this.getSummary());
+      if (__DEV__) console.log('[PlaytestLogger] Session saved');
+      if (__DEV__) console.log(this.getSummary());
     } catch (error) {
       console.error('[PlaytestLogger] Save error:', error);
     }

@@ -171,7 +171,7 @@ const checkAsyncStorage = async (): Promise<void> => {
     asyncStorage = AsyncStorage;
     asyncStorageAvailable = true;
   } catch (error) {
-    console.log('AsyncStorage not available, using in-memory stats');
+    if (__DEV__) console.log('AsyncStorage not available, using in-memory stats');
     asyncStorageAvailable = false;
   }
 };

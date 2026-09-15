@@ -6,17 +6,13 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1F1240"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.jennydoko.app"
     },
     "android": {
       "package": "com.jennydoko.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#13B0FA",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -32,6 +28,18 @@
       "eas": {
         "projectId": "2926b99e-d0a0-49a5-b98f-cb1f9f4ad476"
       }
-    }
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-audio",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#1F1240"
+        }
+      ]
+    ]
   }
 }

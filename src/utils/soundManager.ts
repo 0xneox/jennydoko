@@ -118,10 +118,6 @@ class SoundManager {
   private expoAudioBgmPlayer: any = null;
   private expoAudioPlayers: Map<string, any> = new Map();
 
-  // Native legacy expo-av state (fallback if expo-audio native bindings unavailable)
-  private legacyAvModule: any = null;
-  private legacyBgmSound: any = null;
-
   async init(): Promise<void> {
     if (this.initialized) return;
     if (this.initPromise) return this.initPromise;
@@ -194,7 +190,7 @@ class SoundManager {
         this.webAudioBuffers[key] = buffer;
       }
 
-      console.log('[SoundManager] Web Audio initialized with synthesized buffers');
+      if (__DEV__) console.log('[SoundManager] Web Audio initialized with synthesized buffers');
 
       // User gesture unlock for web autoplay policies
       const unlockAudio = () => {
@@ -231,31 +227,14 @@ class SoundManager {
             playsInSilentMode: true,
           }).catch(() => {});
         }
-        console.log('[SoundManager] Native audio engine initialized via expo-audio (SDK 57)');
+        if (__DEV__) console.log('[SoundManager] Native audio engine initialized via expo-audio (SDK 57)');
         return;
       }
     } catch {
-      // expo-audio not available or not linked in current runtime, fall through to expo-av
+      // expo-audio not available or not linked in current runtime
     }
 
-    // 2. Try legacy expo-av as secondary fallback
-    try {
-      const av = await import('expo-av');
-      if (av?.Audio) {
-        this.legacyAvModule = av.Audio;
-        await this.legacyAvModule.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-        }).catch(() => {});
-        console.log('[SoundManager] Native audio engine initialized via expo-av fallback');
-        return;
-      }
-    } catch {
-      // expo-av not available
-    }
-
-    console.log('[SoundManager] Native sound module unavailable in current environment; haptics active');
+    if (__DEV__) console.log('[SoundManager] Native sound module unavailable in current environment; haptics active');
   }
 
   // --- Sound Effects Playback ---
@@ -318,23 +297,6 @@ class SoundManager {
         console.warn('[SoundManager] expo-audio play error:', err);
       }
     }
-
-    // 3. Fallback Native Playback via expo-av
-    if (this.legacyAvModule && asset) {
-      try {
-        const { sound } = await this.legacyAvModule.Sound.createAsync(asset, {
-          shouldPlay: true,
-          volume: 0.85,
-        });
-        sound.setOnPlaybackStatusUpdate((status: any) => {
-          if (status.didJustFinish) {
-            sound.unloadAsync().catch(() => {});
-          }
-        });
-      } catch {
-        // Fallback ignore
-      }
-    }
   }
 
   // --- Background Music (BGM) ---
@@ -370,7 +332,7 @@ class SoundManager {
         source.start(0);
         this.bgmSource = source;
         this.isBgmPlaying = true;
-        console.log('[SoundManager] Cozy acoustic BGM playing (Web)');
+        if (__DEV__) console.log('[SoundManager] Cozy acoustic BGM playing (Web)');
       } catch (err) {
         console.warn('[SoundManager] Web BGM start error:', err);
       }
@@ -392,34 +354,12 @@ class SoundManager {
         if (this.expoAudioBgmPlayer) {
           this.expoAudioBgmPlayer.play();
           this.isBgmPlaying = true;
-          console.log('[SoundManager] Cozy acoustic BGM playing (expo-audio native)');
+          if (__DEV__) console.log('[SoundManager] Cozy acoustic BGM playing (expo-audio native)');
         }
         return;
       } catch (err) {
         console.warn('[SoundManager] expo-audio BGM start error:', err);
       }
-    }
-
-    // 3. Fallback expo-av BGM
-    if (this.legacyAvModule) {
-      try {
-        if (!this.legacyBgmSound) {
-          const bgmAsset = getSoundAsset('bgm_acoustic');
-          const { sound } = await this.legacyAvModule.Sound.createAsync(
-            bgmAsset,
-            {
-              isLooping: true,
-              volume: this.defaultBgmVolume,
-              shouldPlay: true,
-            }
-          );
-          this.legacyBgmSound = sound;
-        } else {
-          await this.legacyBgmSound.playAsync();
-        }
-        this.isBgmPlaying = true;
-        console.log('[SoundManager] Cozy acoustic BGM playing (expo-av native)');
-      } catch {}
     }
   }
 
@@ -434,12 +374,6 @@ class SoundManager {
     if (this.expoAudioBgmPlayer) {
       try {
         this.expoAudioBgmPlayer.pause();
-      } catch {}
-    }
-
-    if (this.legacyBgmSound) {
-      try {
-        await this.legacyBgmSound.stopAsync();
       } catch {}
     }
 
@@ -475,18 +409,6 @@ class SoundManager {
         this.duckTimeout = setTimeout(() => {
           if (this.expoAudioBgmPlayer && this.bgmEnabled) {
             this.expoAudioBgmPlayer.volume = this.defaultBgmVolume;
-          }
-        }, durationMs);
-      } catch {}
-    }
-
-    // Duck legacy expo-av BGM
-    if (this.legacyBgmSound) {
-      try {
-        await this.legacyBgmSound.setVolumeAsync(this.duckedBgmVolume);
-        this.duckTimeout = setTimeout(async () => {
-          if (this.legacyBgmSound && this.bgmEnabled) {
-            await this.legacyBgmSound.setVolumeAsync(this.defaultBgmVolume);
           }
         }, durationMs);
       } catch {}
@@ -550,13 +472,6 @@ class SoundManager {
         }
       } catch {}
       this.expoAudioBgmPlayer = null;
-    }
-
-    if (this.legacyBgmSound) {
-      try {
-        await this.legacyBgmSound.unloadAsync();
-      } catch {}
-      this.legacyBgmSound = null;
     }
   }
 }
