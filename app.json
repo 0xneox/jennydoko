@@ -11,7 +11,7 @@
       "bundleIdentifier": "com.jennydoko.app"
     },
     "android": {
-      "package": "com.jennydoko.app",
+      "package": "com.jennydoko.game",
       "adaptiveIcon": {
         "backgroundColor": "#13B0FA",
         "foregroundImage": "./assets/android-icon-foreground.png",
