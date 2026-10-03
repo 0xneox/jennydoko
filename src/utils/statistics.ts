@@ -1,3 +1,5 @@
+import { getLevelConfig, getLevelMechanics } from '../data/proceduralPuzzles';
+
 const STATS_KEY = '@jenny_game_stats';
 
 export interface LevelStats {
@@ -6,6 +8,7 @@ export interface LevelStats {
   completions: number;
   hintsUsed: number;
   stars?: number;
+  bestScore?: number;
 }
 
 export interface StarResult {
@@ -59,6 +62,43 @@ export function calculatePawfectStars(
     subtext: 'All puppies are safe and happy!',
   };
 }
+
+export interface ScoreContext {
+  gridSize: number;
+  puppiesPerUnit: number;
+}
+
+/**
+ * Level score. Base points scale with board difficulty (cells x puppy quota),
+ * finishing under par adds a speed bonus capped at half the base, and the
+ * earned star rating multiplies the whole pot — so a sloppy fast clear never
+ * outscores a flawless slow one. Total score is the sum of each level's best.
+ */
+export function calculateLevelScore(
+  stars: number,
+  timeSeconds: number,
+  { gridSize, puppiesPerUnit }: ScoreContext
+): number {
+  const puppies = gridSize * Math.max(1, puppiesPerUnit);
+  const base = puppies * 100;
+  const starFraction = Math.min(1, Math.max(0, stars / 3));
+  const parSeconds = puppies * 30;
+  const speedBonus = Math.min(
+    base * 0.5,
+    Math.max(0, (parSeconds - timeSeconds) * 2)
+  );
+  return Math.round((base + speedBonus) * starFraction);
+}
+
+export interface CompletionResult extends StarResult {
+  score: number;
+  totalScore: number;
+  isNewBestScore: boolean;
+}
+
+// Gross points earned per correctly placed puppy. A full board's runScore
+// (placed x PUPPY_SCORE) equals the score formula's difficulty base.
+export const PUPPY_SCORE = 100;
 
 export interface GameStats {
   totalPuzzlesSolved: number;
@@ -137,7 +177,25 @@ const parseGameStats = (raw: string | null): GameStats | null => {
           completions: v.completions,
           hintsUsed: v.hintsUsed,
           ...(isFiniteNumber(v.stars) ? { stars: v.stars } : {}),
+          ...(isFiniteNumber(v.bestScore) ? { bestScore: v.bestScore } : {}),
         };
+        // Backfill pre-score clears: estimate bestScore from recorded stars and
+        // best time so existing progress converts to total score on next save.
+        if (
+          levelStats[level].bestScore === undefined &&
+          v.completions > 0 &&
+          level >= 1 &&
+          level <= 1000
+        ) {
+          levelStats[level].bestScore = calculateLevelScore(
+            levelStats[level].stars ?? 3,
+            v.bestTime,
+            {
+              gridSize: getLevelConfig(level).gridSize,
+              puppiesPerUnit: getLevelMechanics(level).puppiesPerUnit,
+            }
+          );
+        }
       }
     }
   }
@@ -214,6 +272,8 @@ export const saveStats = async (stats: GameStats): Promise<void> => {
 export interface CompletionContext {
   mistakes?: number;
   zen?: boolean;
+  gridSize?: number;
+  puppiesPerUnit?: number;
 }
 
 export const recordLevelCompletion = async (
@@ -223,10 +283,16 @@ export const recordLevelCompletion = async (
   heartsLeft: number = 3,
   hintsUsed: number = 0,
   context: CompletionContext = {}
-): Promise<StarResult> => {
+): Promise<CompletionResult> => {
   const stats = await loadStats();
   const starResult = calculatePawfectStars(heartsLeft, hintsUsed, context.mistakes, context.zen);
-  
+  const score = context.gridSize
+    ? calculateLevelScore(starResult.stars, time, {
+        gridSize: context.gridSize,
+        puppiesPerUnit: context.puppiesPerUnit ?? 1,
+      })
+    : 0;
+
   stats.totalPuzzlesSolved++;
   stats.totalPlayTime += time;
 
@@ -245,6 +311,11 @@ export const recordLevelCompletion = async (
   levelStats.hintsUsed += hintsUsed;
   levelStats.stars = Math.max(levelStats.stars ?? 0, starResult.stars);
 
+  const isNewBestScore = score > (levelStats.bestScore ?? 0);
+  if (isNewBestScore) {
+    levelStats.bestScore = score;
+  }
+
   if (moves < levelStats.bestMoves) {
     levelStats.bestMoves = moves;
   }
@@ -254,8 +325,11 @@ export const recordLevelCompletion = async (
   }
 
   await saveStats(stats);
-  return starResult;
+  return { ...starResult, score, totalScore: getTotalScore(stats), isNewBestScore };
 };
+
+export const getTotalScore = (stats: GameStats): number =>
+  Object.values(stats.levelStats).reduce((sum, l) => sum + (l.bestScore ?? 0), 0);
 
 export const getLevelStats = async (level: number): Promise<LevelStats | null> => {
   const stats = await loadStats();

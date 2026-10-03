@@ -11,11 +11,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useGameStore } from '../store/gameStore';
 import { CHAPTERS, getChapterIndexForLevel } from '../data/chapterData';
-import { getTotalStats, GameStats } from '../utils/statistics';
+import { getTotalStats, getTotalScore, GameStats } from '../utils/statistics';
 import { soundManager } from '../utils/soundManager';
 import { CandyBackground } from '../components/candy/CandyBackground';
 import { CandyButton } from '../components/candy/CandyButton';
 import { CandyPanel } from '../components/candy/CandyPanel';
+import { AdBanner } from '../components/AdBanner';
 import { CANDY_GOLD, CANDY_SURFACE, CANDY_TEXT } from '../utils/theme';
 
 export const WorldMapScreen: React.FC = () => {
@@ -45,6 +46,7 @@ export const WorldMapScreen: React.FC = () => {
   }, []);
 
   const activeChapter = CHAPTERS[selectedChapterIndex];
+  const totalScore = stats ? getTotalScore(stats) : 0;
 
   // Helper to test if a level has been completed
   const isLevelCompleted = (lvl: number): boolean => {
@@ -96,6 +98,9 @@ export const WorldMapScreen: React.FC = () => {
           <Text style={styles.headerSubtitle}>
             {stampsCollected} of 50 Garden Stamps Collected
           </Text>
+          {totalScore > 0 && (
+            <Text style={styles.headerScore}>🏆 {totalScore.toLocaleString()} pts</Text>
+          )}
         </View>
 
         <View style={styles.headerPlaceholder} />
@@ -287,6 +292,9 @@ export const WorldMapScreen: React.FC = () => {
           </CandyPanel>
         </Animated.View>
       </ScrollView>
+
+      {/* AdMob banner — collapses to nothing until ads are ready */}
+      <AdBanner />
     </SafeAreaView>
     </CandyBackground>
   );
@@ -325,6 +333,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: CANDY_TEXT.onDarkSoft,
     marginTop: 1,
+  },
+  headerScore: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: CANDY_GOLD.base,
+    marginTop: 2,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
   headerPlaceholder: {
     width: 70,

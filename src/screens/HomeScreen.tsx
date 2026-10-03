@@ -27,6 +27,7 @@ import {
 import { CandyBackground } from '../components/candy/CandyBackground';
 import { CandyButton } from '../components/candy/CandyButton';
 import { CandyPanel } from '../components/candy/CandyPanel';
+import { AdBanner } from '../components/AdBanner';
 import {
   APP_NAME,
   APP_TAGLINE,
@@ -437,6 +438,9 @@ export const HomeScreen: React.FC = () => {
           startLevel(currentLevel);
         }}
       />
+
+      {/* AdMob banner — collapses to nothing until ads are ready */}
+      <AdBanner />
     </SafeAreaView>
     </CandyBackground>
   );

@@ -8,7 +8,7 @@ export interface StoryPageData {
 export const STORY_PAGES: StoryPageData[] = [
   {
     chapter: 'Part 1 • Greenbark Meadow',
-    headline: 'Jenny is a puppy sitter at Greenbark Meadow.',
+    headline: 'Jenny is a puppy at Greenbark Meadow.',
     dialogue: 'Hi I\'m Jenny !\nSofie brings me to Greenbark Meadow, where I get to play with so many amazing friends !',
     highlightColor: '#27AE60',
   },
@@ -21,7 +21,7 @@ export const STORY_PAGES: StoryPageData[] = [
   {
     chapter: 'Part 3 • The Quest',
     headline: 'Can you help Jenny ensure every puppy gets their own sunny spot?',
-    dialogue: 'They love their personal space and need room to stretch ! Lets explore together and find the perfect sunny spot for each of us across many gardens !',
+    dialogue: 'My friends and I love exploring then Kingdom Of Joy together! Everyone needs their own sunny spot to rest, play and be happy. Can you help us find the perfect spots for each of us?🩷',
     highlightColor: '#E67E22',
   },
 ];

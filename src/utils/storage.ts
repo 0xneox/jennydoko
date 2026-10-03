@@ -1,5 +1,6 @@
 const STORAGE_KEY = '@jenny_game_progress';
 const TUTORIAL_KEY = '@jenny_tutorial_seen';
+const LAST_INTERSTITIAL_KEY = '@jenny_last_interstitial_at';
 
 export interface GameProgress {
   unlockedLevels: number;
@@ -449,6 +450,26 @@ export const loadClaimedAdoptions = async (): Promise<number[]> => {
   } catch (error) {
     console.error('Error loading claimed adoptions:', error);
     return [];
+  }
+};
+
+/** Last time an interstitial ad was shown (ms epoch) — backs the frequency cap. */
+export const getLastInterstitialAt = async (): Promise<number> => {
+  try {
+    const raw = await getItem(LAST_INTERSTITIAL_KEY);
+    const ts = raw ? Number(raw) : 0;
+    return Number.isFinite(ts) ? ts : 0;
+  } catch (error) {
+    console.error('Error loading interstitial timestamp:', error);
+    return 0;
+  }
+};
+
+export const setLastInterstitialAt = async (ts: number): Promise<void> => {
+  try {
+    await setItem(LAST_INTERSTITIAL_KEY, String(ts));
+  } catch (error) {
+    console.error('Error saving interstitial timestamp:', error);
   }
 };
 

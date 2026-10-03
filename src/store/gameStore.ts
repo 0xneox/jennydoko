@@ -91,6 +91,9 @@ interface GameStore extends Omit<GameState, 'currentLevel'> {
   setGameMode: (mode: GameMode) => void;
   lastMistakeForgiven: boolean;
   hintsUsed: number;
+  /** Extra hints earned by watching a rewarded ad this level. */
+  adFreeHints: number;
+  grantAdFreeHint: () => void;
   activeHint: ActiveHint | null;
   hintMessage: string | null;
   requestHint: () => boolean;
@@ -155,6 +158,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         mistakes: 0,
         lastMistakeForgiven: false,
         hintsUsed: 0,
+        adFreeHints: 0,
         activeHint: null,
         hintMessage: null,
         lastWrongCell: null,
@@ -178,6 +182,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     mechanics: DEFAULT_MECHANICS,
     lastMistakeForgiven: false,
     hintsUsed: 0,
+    adFreeHints: 0,
     activeHint: null,
     hintMessage: null,
     gameMode: 'normal' as GameMode,
@@ -209,6 +214,7 @@ export const useGameStore = create<GameStore>((set, get) => {
         mistakes: 0,
         lastMistakeForgiven: false,
         hintsUsed: 0,
+        adFreeHints: 0,
         activeHint: null,
         hintMessage: null,
         lastWrongCell: null,
@@ -291,6 +297,10 @@ export const useGameStore = create<GameStore>((set, get) => {
       });
 
       return success;
+    },
+
+    grantAdFreeHint: () => {
+      set({ adFreeHints: get().adFreeHints + 1 });
     },
 
     requestHint: () => {

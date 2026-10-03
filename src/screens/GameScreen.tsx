@@ -1,10 +1,11 @@
-﻿import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Animated,
+  Easing,
   Share,
   Platform,
   Image,
@@ -12,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGameStore } from '../store/gameStore';
-import { Board } from '../components/Board';
+import { Board, GRID_OFFSET } from '../components/Board';
 import { CandyBackground } from '../components/candy/CandyBackground';
 import { CandyButton } from '../components/candy/CandyButton';
 import { CandyPanel } from '../components/candy/CandyPanel';
@@ -44,7 +45,7 @@ import {
   getChapterStoriesSeen,
 } from '../utils/storage';
 import { soundManager } from '../utils/soundManager';
-import { recordLevelCompletion } from '../utils/statistics';
+import { recordLevelCompletion, getTotalStats, getTotalScore, PUPPY_SCORE } from '../utils/statistics';
 import { getLevelDifficulty, getDifficultyColor, getDifficultyLabel } from '../utils/levelHelpers';
 import { getChapterForLevel } from '../data/chapterData';
 import { getChapterStory, CHAPTERS_WITH_STORIES, ChapterStory } from '../data/chapterStories';
@@ -56,6 +57,12 @@ import {
   generateDailyShareText,
 } from '../utils/dailyChallenge';
 import { AdoptionModal } from '../components/AdoptionModal';
+import { FREE_HINTS_PER_LEVEL } from '../ads/adConfig';
+import {
+  adsAvailable,
+  maybeShowInterstitial,
+  showRewardedAd,
+} from '../ads/adManager';
 
 // Fixed width for the control columns flanking the board — the widest item is
 // the HintButton ("Show cell" ≈ 130px). Fixed columns keep the board centered
@@ -89,6 +96,8 @@ export const GameScreen: React.FC = () => {
     mechanics,
     lastMistakeForgiven,
     hintsUsed,
+    adFreeHints,
+    grantAdFreeHint,
     activeHint,
     hintMessage,
     requestHint,
@@ -97,12 +106,17 @@ export const GameScreen: React.FC = () => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  // Short screens (older/small phones) need tighter vertical chrome so a big
+  // board + controls never clip off the bottom edge.
+  const isShortScreen = screenHeight < 700;
+
   // Fill the available space instead of using fixed sizes, so a 10x10 board is
   // just as tappable as a 4x4 one. Chrome allowances: screen padding + tray
   // frame horizontally, and nav + stats + mode switcher + controls vertically.
   const calcCellSize = (gridSize: number) => {
-    const usableWidth = Math.min(screenWidth, 560) - 32 - 36;
-    const usableHeight = screenHeight - 380;
+    const usableWidth = Math.min(screenWidth, 700) - 32 - 36;
+    const chromeAllowance = isShortScreen ? 320 : 380;
+    const usableHeight = screenHeight - insets.top - insets.bottom - chromeAllowance;
     const size = Math.floor(Math.min(usableWidth, usableHeight) / gridSize);
     return Math.max(26, Math.min(74, size));
   };
@@ -126,11 +140,23 @@ export const GameScreen: React.FC = () => {
     stars: number;
     label: string;
     subtext: string;
+    score: number;
+    totalScore: number;
+    isNewBestScore: boolean;
   }>({
     stars: 3,
     label: 'Paw-fect Master! 🐾',
     subtext: 'Flawless deduction with gentle paws!',
+    score: 0,
+    totalScore: 0,
+    isNewBestScore: false,
   });
+  const [totalScore, setTotalScore] = useState(0);
+  const [levelBestScore, setLevelBestScore] = useState(0);
+  const [scorePops, setScorePops] = useState<{ id: number; row: number; col: number }[]>([]);
+  const popIdRef = useRef(0);
+  const prevPuppyCellsRef = useRef<Set<string>>(new Set());
+  const scoreChipScale = useRef(new Animated.Value(1)).current;
   const [activeMilestone, setActiveMilestone] = useState<PuppyMilestone | null>(null);
   const [shareToast, setShareToast] = useState(false);
 
@@ -140,6 +166,11 @@ export const GameScreen: React.FC = () => {
   // Hint speech bubble + restart confirmation
   const [hintBubble, setHintBubble] = useState<string | null>(null);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+
+  // Rewarded-ad hint gate: free hints exhausted → offer an ad for one more
+  const [showHintAdPrompt, setShowHintAdPrompt] = useState(false);
+  const [hintAdBusy, setHintAdBusy] = useState(false);
+  const [hintAdError, setHintAdError] = useState<string | null>(null);
 
   // Mechanic intro tutorial (cats, linked, twin)
   const [activeMechanicIntro, setActiveMechanicIntro] = useState<MechanicType | null>(null);
@@ -235,6 +266,8 @@ export const GameScreen: React.FC = () => {
 
     setShowCompletionModal(false);
     setWrongMoveToast(null);
+    setShowHintAdPrompt(false);
+    setHintAdError(null);
     setLastPlacedPuppy(null);
     setIsDragging(false);
     setJennyMood('friendly');
@@ -252,6 +285,18 @@ export const GameScreen: React.FC = () => {
     setShowTutorial(false);
     setActiveMechanicIntro(null);
     setActiveChapterStory(null);
+
+    // Persistent total score chip + per-level best (refreshed again on completion)
+    setScorePops([]);
+    prevPuppyCellsRef.current = new Set();
+    getTotalStats()
+      .then(s => {
+        if (!isMountedRef.current) return;
+        setTotalScore(getTotalScore(s));
+        setLevelBestScore(s.levelStats[currentLevel]?.bestScore ?? 0);
+      })
+      .catch(() => {});
+
     if (currentLevel === 1) {
       getTutorialSeen().then(seen => {
         if (!seen && isMountedRef.current) setShowTutorial(true);
@@ -400,9 +445,14 @@ export const GameScreen: React.FC = () => {
     recordLevelCompletion(currentLevel, moves, completionTime, hearts, hintsUsed, {
       mistakes,
       zen: gameMode === 'zen',
+      gridSize: board.gridSize,
+      puppiesPerUnit: mechanics.puppiesPerUnit,
     })
       .then(result => {
-        if (!cancelled) setPawfectResult(result);
+        if (cancelled) return;
+        setPawfectResult(result);
+        setTotalScore(result.totalScore);
+        if (result.isNewBestScore) setLevelBestScore(result.score);
       })
       .catch(() => {});
 
@@ -451,6 +501,72 @@ export const GameScreen: React.FC = () => {
       }
     };
   }, [isComplete, completionScaleAnim, currentLevel, moves, hearts, isDailyChallenge, hintsUsed]);
+
+  // --- Live scoring: +PUPPY_SCORE pops per placed puppy, chip previews the
+  // net level score (run gross x current star fraction) so mistakes visibly
+  // cost points before they're committed as the level's best on completion.
+  const placedPuppies = useMemo(
+    () =>
+      board.cells.reduce(
+        (n, row) => n + row.filter(c => c.value === 'puppy').length,
+        0
+      ),
+    [board]
+  );
+  const liveStarFraction =
+    Math.max(
+      0.5,
+      3 - (gameMode === 'zen' ? 0 : mistakes) * 0.5 - hintsUsed * 0.5
+    ) / 3;
+  const liveNetScore = Math.round(placedPuppies * PUPPY_SCORE * liveStarFraction);
+  const displayScore =
+    totalScore - levelBestScore + Math.max(levelBestScore, liveNetScore);
+
+  // Spawn a "+N" pop at every newly placed puppy cell (covers taps, drags and
+  // hint-placed puppies alike since it diffs the board, not the input path).
+  useEffect(() => {
+    const cur = new Set<string>();
+    board.cells.forEach((row, r) =>
+      row.forEach((cell, c) => {
+        if (cell.value === 'puppy') cur.add(`${r},${c}`);
+      })
+    );
+    const added = [...cur].filter(k => !prevPuppyCellsRef.current.has(k));
+    if (added.length > 0) {
+      const pops = added.map(k => {
+        const [r, c] = k.split(',').map(Number);
+        return { id: ++popIdRef.current, row: r, col: c };
+      });
+      setScorePops(p => [...p, ...pops]);
+      soundManager.play('combo');
+    }
+    prevPuppyCellsRef.current = cur;
+  }, [board]);
+
+  const removeScorePop = useCallback((id: number) => {
+    setScorePops(p => p.filter(x => x.id !== id));
+  }, []);
+
+  // Chip punch whenever the live total grows
+  const prevDisplayScoreRef = useRef(0);
+  useEffect(() => {
+    if (displayScore > prevDisplayScoreRef.current) {
+      scoreChipScale.setValue(1);
+      Animated.sequence([
+        Animated.timing(scoreChipScale, {
+          toValue: 1.25,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scoreChipScale, {
+          toValue: 1,
+          friction: 5,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+    prevDisplayScoreRef.current = displayScore;
+  }, [displayScore, scoreChipScale]);
 
   const handleShareDaily = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -677,9 +793,36 @@ export const GameScreen: React.FC = () => {
     setHintBubble(null);
   };
 
+  // Escalating the *current* hint (explain → spotlight → place) is always free;
+  // only a brand-new deduction counts against the free allowance.
+  const hintIsEscalating =
+    !!activeHint && board.cells[activeHint.cell.row]?.[activeHint.cell.col]?.value === 'empty';
+  const hintNeedsAd =
+    !hintIsEscalating && hintsUsed >= FREE_HINTS_PER_LEVEL + adFreeHints && adsAvailable();
+
   const handleHintPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     soundManager.play('hint');
+    if (hintNeedsAd) {
+      setHintAdError(null);
+      setShowHintAdPrompt(true);
+      return;
+    }
+    requestHint();
+  };
+
+  const handleWatchAdForHint = async () => {
+    setHintAdBusy(true);
+    setHintAdError(null);
+    const earned = await showRewardedAd();
+    if (!isMountedRef.current) return;
+    setHintAdBusy(false);
+    if (!earned) {
+      setHintAdError("The ad isn't ready yet — try again in a moment.");
+      return;
+    }
+    setShowHintAdPrompt(false);
+    grantAdFreeHint();
     requestHint();
   };
 
@@ -688,10 +831,13 @@ export const GameScreen: React.FC = () => {
     setTutorialSeen(true);
   };
 
-  const handleNextLevel = () => {
+  const handleNextLevel = async () => {
     setShowCompletionModal(false);
     setLastPlacedPuppy(null);
     setIsDragging(false);
+    // Frequency-capped interstitial — resolves immediately when not due.
+    await maybeShowInterstitial(currentLevel);
+    if (!isMountedRef.current) return;
     if (currentLevel < 1000) {
       initializeLevel(currentLevel + 1);
     } else {
@@ -741,6 +887,7 @@ export const GameScreen: React.FC = () => {
   const hintControl = (
     <HintButton
       tier={activeHint?.tier}
+      adGated={hintNeedsAd}
       disabled={isGameOver || isComplete}
       onPress={handleHintPress}
     />
@@ -756,7 +903,7 @@ export const GameScreen: React.FC = () => {
         },
       ]}
     >
-      <CandyBackground style={[styles.container, { paddingTop: insets.top + 8 }]}>
+      <CandyBackground style={[styles.container, { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, 12) }]}>
       {!isReady ? (
         <View style={styles.loadingShimmer}>
           <Animated.Text style={[styles.loadingPaw, { opacity: shimmerAnim }]}>🐾</Animated.Text>
@@ -864,6 +1011,40 @@ export const GameScreen: React.FC = () => {
         </View>
       )}
 
+      {/* Rewarded Ad Hint Prompt — shown when free hints run out */}
+      {showHintAdPrompt && !isGameOver && (
+        <View style={styles.modalOverlay}>
+          <CandyPanel style={styles.gameOverModal} contentStyle={styles.gameOverModalFace}>
+            <Text style={styles.modalBigEmoji}>📺</Text>
+            <Text style={styles.gameOverTitle}>Out of free hints!</Text>
+            <Text style={styles.gameOverSub}>
+              Watch a short ad and Jenny will find one more hint for you.
+            </Text>
+            {hintAdError && (
+              <Text style={styles.hintAdError}>{hintAdError}</Text>
+            )}
+            <View style={styles.modalButtonGroup}>
+              <CandyButton
+                block
+                size="lg"
+                skin="orange"
+                label={hintAdBusy ? 'Loading Ad…' : 'Watch Ad'}
+                icon={<Text style={styles.controlIcon}>🎬</Text>}
+                disabled={hintAdBusy}
+                onPress={handleWatchAdForHint}
+              />
+              <CandyButton
+                block
+                skin="neutral"
+                label="No Thanks"
+                disabled={hintAdBusy}
+                onPress={() => setShowHintAdPrompt(false)}
+              />
+            </View>
+          </CandyPanel>
+        </View>
+      )}
+
       {/* Confetti Celebration */}
       <Confetti visible={showCompletionModal} />
 
@@ -873,6 +1054,7 @@ export const GameScreen: React.FC = () => {
           <Animated.View
             style={[
               styles.completionModal,
+              isShortScreen && { padding: 14 },
               { transform: [{ scale: completionScaleAnim }] },
             ]}
           >
@@ -892,7 +1074,10 @@ export const GameScreen: React.FC = () => {
             {/* Celebration puppy hero — swap this require() for the custom art */}
             <Image
               source={JENNY_PUPPY_IMAGE}
-              style={styles.completionPuppyImage}
+              style={[
+                styles.completionPuppyImage,
+                isShortScreen && { width: 96, height: 96, marginBottom: 8 },
+              ]}
               resizeMode="contain"
             />
 
@@ -905,6 +1090,17 @@ export const GameScreen: React.FC = () => {
               </View>
               <Text style={styles.pawfectTitle}>{pawfectResult.label}</Text>
               <Text style={styles.pawfectSub}>{pawfectResult.subtext}</Text>
+              {pawfectResult.score > 0 && (
+                <View style={styles.scoreRow}>
+                  <Text style={styles.scoreEarned}>+{pawfectResult.score} pts</Text>
+                  {pawfectResult.isNewBestScore && (
+                    <Text style={styles.scoreBestBadge}>New Best!</Text>
+                  )}
+                </View>
+              )}
+              {pawfectResult.totalScore > 0 && (
+                <Text style={styles.scoreTotal}>🏆 {pawfectResult.totalScore.toLocaleString()} total</Text>
+              )}
             </View>
 
             {isDailyChallenge && dailyResult && (
@@ -999,7 +1195,7 @@ export const GameScreen: React.FC = () => {
       />
 
       {/* Upper utility bar — nav buttons pinned to the top edge */}
-      <View style={styles.topNavBar}>
+      <View style={[styles.topNavBar, isShortScreen && { marginBottom: 4 }]}>
         <View style={styles.topNavSide}>
           <CandyButton
             skin="grape"
@@ -1046,7 +1242,7 @@ export const GameScreen: React.FC = () => {
       {/* Level header on its own centered row under the utility bar */}
       <CandyPanel
         radius={CANDY_METRICS.radiusCard}
-        style={styles.levelHeaderPanel}
+        style={[styles.levelHeaderPanel, isShortScreen && { marginBottom: 4 }]}
         contentStyle={styles.centerLevelGroup}
       >
         <View style={styles.centerLevelInfo}>
@@ -1076,13 +1272,18 @@ export const GameScreen: React.FC = () => {
             </Text>
           )}
         </View>
+        <Animated.View
+          style={[styles.levelScoreChip, { transform: [{ scale: scoreChipScale }] }]}
+        >
+          <Text style={styles.levelScoreText}>🏆 {displayScore.toLocaleString()}</Text>
+        </Animated.View>
       </CandyPanel>
 
       {/* Stats, board and controls stay vertically centered in the leftover space */}
       <View style={styles.gameColumn}>
 
       {/* Sub-Header Stats Bar */}
-      <View style={styles.subStatsBar}>
+      <View style={[styles.subStatsBar, isShortScreen && { marginBottom: 6 }]}>
         {gameMode === 'zen' ? (
           <CandyPanel variant="well" radius={CANDY_METRICS.radiusChip} contentStyle={styles.subStatItem}>
             <Text style={styles.subStatIcon}>🧘</Text>
@@ -1131,7 +1332,7 @@ export const GameScreen: React.FC = () => {
           <View style={styles.boardSideControls}>{undoRestartButtons}</View>
         )}
 
-        <View style={styles.boardContainer}>
+        <View style={[styles.boardContainer, isShortScreen && { marginBottom: 8 }]}>
           <Board
             board={board}
             onCellPress={handleCellPress}
@@ -1146,6 +1347,16 @@ export const GameScreen: React.FC = () => {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           />
+          {scorePops.map(pop => (
+            <ScorePop
+              key={pop.id}
+              id={pop.id}
+              row={pop.row}
+              col={pop.col}
+              cellSize={cellSize}
+              onDone={removeScorePop}
+            />
+          ))}
         </View>
 
         {flankControls && (
@@ -1176,7 +1387,7 @@ export const GameScreen: React.FC = () => {
         variant="well"
         radius={CANDY_METRICS.radiusPill}
         contentStyle={styles.modeSwitcherContainer}
-        style={styles.modeSwitcherWrap}
+        style={[styles.modeSwitcherWrap, isShortScreen && { marginTop: 6, marginBottom: 4 }]}
       >
         <TouchableOpacity
           style={[
@@ -1231,6 +1442,62 @@ export const GameScreen: React.FC = () => {
       )}
       </CandyBackground>
     </Animated.View>
+  );
+};
+
+// Floating "+N" that spawns on a placed puppy and flies up off the board
+// toward the score chip — paired with the chip pulse it reads as the points
+// physically travelling into the total.
+const ScorePop: React.FC<{
+  id: number;
+  row: number;
+  col: number;
+  cellSize: number;
+  onDone: (id: number) => void;
+}> = ({ id, row, col, cellSize, onDone }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const t = Animated.timing(anim, {
+      toValue: 1,
+      duration: 750,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    t.start(({ finished }) => {
+      if (finished) onDone(id);
+    });
+    return () => t.stop();
+  }, [anim, id, onDone]);
+
+  const cellCenterY = GRID_OFFSET + row * cellSize + cellSize / 2;
+  return (
+    <Animated.Text
+      pointerEvents="none"
+      style={[
+        styles.scorePop,
+        {
+          left: GRID_OFFSET + col * cellSize + cellSize / 2 - 40,
+          top: cellCenterY - 10,
+          transform: [
+            { translateY: anim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, -(cellCenterY + 14)],
+              }) },
+            { scale: anim.interpolate({
+                inputRange: [0, 0.25, 1],
+                outputRange: [0.5, 1.2, 1],
+              }) },
+          ],
+          opacity: anim.interpolate({
+            inputRange: [0, 0.12, 0.7, 1],
+            outputRange: [0, 1, 1, 0],
+          }),
+        },
+      ]}
+    >
+      +{PUPPY_SCORE}
+    </Animated.Text>
   );
 };
 
@@ -1482,6 +1749,36 @@ const styles = StyleSheet.create({
     color: CANDY_TEXT.onDarkSoft,
     textAlign: 'center',
   },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  scoreEarned: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: CANDY_GOLD.base,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 0,
+  },
+  scoreBestBadge: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    backgroundColor: '#26B85B',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  scoreTotal: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: CANDY_TEXT.onDarkSoft,
+    marginTop: 4,
+  },
   shareToastBadge: {
     backgroundColor: '#1E8F7E',
     borderWidth: 1.5,
@@ -1524,6 +1821,12 @@ const styles = StyleSheet.create({
     color: CANDY_TEXT.onDarkSoft,
     textAlign: 'center',
     marginBottom: 8,
+  },
+  hintAdError: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FF9FAE',
+    textAlign: 'center',
   },
 
   /* Completion Modal */
@@ -1678,6 +1981,35 @@ const styles = StyleSheet.create({
   centerLevelInfo: {
     alignItems: 'center',
     gap: 3,
+  },
+  levelScoreChip: {
+    backgroundColor: 'rgba(20, 10, 44, 0.45)',
+    borderWidth: 1.5,
+    borderColor: CANDY_GOLD.dark,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'center',
+  },
+  levelScoreText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: CANDY_GOLD.base,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
+  },
+  scorePop: {
+    position: 'absolute',
+    width: 80,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '900',
+    color: CANDY_GOLD.light,
+    textShadowColor: CANDY_TEXT.shadow,
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 2,
+    zIndex: 10,
   },
   twistText: {
     fontSize: 11,

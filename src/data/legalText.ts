@@ -10,7 +10,7 @@ import { APP_NAME } from '../utils/theme';
  */
 export const CONTACT_EMAIL = 'neohex262@pm.me';
 export const LEGAL_ENTITY = '21b Labs';
-export const LEGAL_LAST_UPDATED = 'September 15, 2026';
+export const LEGAL_LAST_UPDATED = 'September 18, 2026';
 
 export interface LegalSection {
   heading: string;
@@ -29,19 +29,27 @@ export const PRIVACY_POLICY: LegalDocument = {
   sections: [
     {
       heading: 'The short version',
-      body: `${APP_NAME} is an offline puzzle game. We do not collect, transmit, or sell any personal data. Everything the game remembers — your progress, settings, and stats — stays on your device.`,
+      body: `${APP_NAME} is an offline puzzle game supported by ads. The game itself does not collect, transmit, or sell any personal data — your progress, settings, and stats stay on your device. Ads are served by Google AdMob, which processes limited device data to deliver and measure ads (see "Advertising" below).`,
     },
     {
       heading: 'What is stored on your device',
-      body: 'The game saves the following locally on your device (never sent to us or anyone else):\n\n• Level progress and unlocked levels\n• Game mode, sound, and music settings\n• Daily challenge streaks and stats\n• Story and tutorial "seen" flags\n\nThis data lives in your browser\'s local storage (web) or the app\'s private storage (Android/iOS).',
+      body: 'The game saves the following locally on your device (never sent to us or anyone else):\n\n• Level progress and unlocked levels\n• Game mode, sound, and music settings\n• Daily challenge streaks and stats\n• Story and tutorial "seen" flags\n• Your ad consent choice (where consent is required)\n\nThis data lives in your browser\'s local storage (web) or the app\'s private storage (Android/iOS).',
+    },
+    {
+      heading: 'Advertising (Google AdMob)',
+      body: `${APP_NAME} shows ads provided by Google AdMob — banners, occasional interstitials between levels, and rewarded ads you can choose to watch for extra hints. To serve and measure ads, Google and its partners may process your device's advertising ID, IP address, and ad interaction data. Ad content is capped at a family-appropriate rating.\n\n• Where required by law (EEA, UK, Switzerland), a consent form lets you choose between personalized and non-personalized ads.\n• You can review or change your choice any time from Settings → Privacy & Ads.\n• No rewarded-ad reward is granted unless the ad finishes playing.\n\nSee how Google uses data: https://policies.google.com/technologies/partner-sites`,
     },
     {
       heading: 'What we do NOT collect',
-      body: `• No accounts or sign-ups\n• No analytics or tracking\n• No advertising or ad identifiers\n• No location data\n• No contacts, photos, or files\n• No crash reporting sent to third parties`,
+      body: `• No accounts or sign-ups\n• No analytics or tracking by us\n• No location data\n• No contacts, photos, or files\n• No crash reporting sent to third parties\n\n(Our ad partner Google processes its own data under Google's policies — see "Advertising".)`,
     },
     {
       heading: 'Children\'s privacy',
-      body: `${APP_NAME} collects no personal information from anyone, including children under 13. The game can be played fully offline.`,
+      body: `${APP_NAME} itself collects no personal information from anyone, including children under 13, and the game can be played fully offline. Ads shown are limited to a family-appropriate content rating.`,
+    },
+    {
+      heading: 'Data Safety (Play Store)',
+      body: 'For the Play Console Data Safety form: the app shares the device advertising ID with Google AdMob for advertising purposes. No personal data is collected by or transmitted to the developer.',
     },
     {
       heading: 'Deleting your data',
@@ -77,6 +85,10 @@ export const TERMS_OF_SERVICE: LegalDocument = {
     {
       heading: 'Acceptable use',
       body: 'Please don\'t use the game for anything unlawful, and don\'t attempt to disrupt it for other players.',
+    },
+    {
+      heading: 'Advertising',
+      body: 'The game is supported by advertising served through Google AdMob. Optional rewarded ads grant in-game bonuses such as extra hints; a reward is granted only when the ad completes. Ad availability depends on your region, consent choices, and network connectivity.',
     },
     {
       heading: 'No warranty',

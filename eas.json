@@ -13,5 +13,13 @@
     "production": {
       "autoIncrement": true
     }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./play-console-service-account.json",
+        "track": "internal"
+      }
+    }
   }
 }

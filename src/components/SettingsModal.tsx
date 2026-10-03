@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useGameStore } from '../store/gameStore';
@@ -8,6 +8,7 @@ import { CandyPanel } from './candy/CandyPanel';
 import { CANDY_GOLD, CANDY_SURFACE, CANDY_TEXT } from '../utils/theme';
 import { LegalDocumentModal } from './LegalDocumentModal';
 import { LegalDocument, PRIVACY_POLICY, TERMS_OF_SERVICE } from '../data/legalText';
+import { adsAvailable, showConsentOptions, subscribeAdsReady } from '../ads/adManager';
 
 interface SettingsModalProps {
   visible: boolean;
@@ -28,6 +29,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [soundEnabled, setSoundEnabled] = useState(soundManager.isEnabled());
   const [bgmEnabled, setBgmEnabled] = useState(soundManager.isBgmEnabled());
   const [legalDoc, setLegalDoc] = useState<LegalDocument | null>(null);
+  const [adsReady, setAdsReady] = useState(adsAvailable());
+
+  useEffect(() => subscribeAdsReady(() => setAdsReady(adsAvailable())), []);
 
   if (!visible) return null;
 
@@ -228,7 +232,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               setLegalDoc(PRIVACY_POLICY);
             }}
           />
+          {adsReady && (
+            <CandyButton
+              skin="neutral"
+              size="sm"
+              label="Privacy & Ads"
+              icon={<Text style={styles.settingsStoryIcon}>📺</Text>}
+              style={styles.settingsStoryButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                soundManager.play('button');
+                showConsentOptions();
+              }}
+            />
+          )}
         </View>
+
+        {/* Ad consent note — the button above opens Google's consent form,
+            which is only present when ads are initialized and the user's
+            region requires a privacy options entry point. */}
 
         {/* Action buttons */}
         <View style={styles.settingsActions}>

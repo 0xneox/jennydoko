@@ -10,6 +10,7 @@ import { WorldMapScreen } from './src/screens/WorldMapScreen';
 import { GameScreen } from './src/screens/GameScreen';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CANDY_BACKDROP } from './src/utils/theme';
+import { initAds } from './src/ads/adManager';
 
 export default function App() {
   const { activeScreen } = useGameStore();
@@ -19,6 +20,7 @@ export default function App() {
   useEffect(() => {
     soundManager.init();
     soundManager.startBgm();
+    initAds();
     return () => {
       soundManager.cleanup();
     };

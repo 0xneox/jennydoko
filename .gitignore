@@ -44,3 +44,9 @@ yarn-error.*
 .claude/
 .vscode/
 .idea/
+
+# Play Console service account key for eas submit (never commit)
+*service-account*.json
+
+# exported upload cert artifact (regenerate via scripts/exportUploadCert.js)
+*.der
